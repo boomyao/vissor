@@ -66,6 +66,18 @@ export const api = {
     return json<ChatSendResponse>(r)
   },
 
+  cancelChat: async (
+    projectId: string,
+    turnId: string,
+  ): Promise<{ canceled: boolean }> => {
+    const r = await fetch(Routes.chatCancel, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ projectId, turnId }),
+    })
+    return json<{ canceled: boolean }>(r)
+  },
+
   upload: async (projectId: string, files: File[]): Promise<UploadResponse> => {
     const fd = new FormData()
     for (const f of files) fd.append('file', f, f.name)

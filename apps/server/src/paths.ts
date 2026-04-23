@@ -1,6 +1,6 @@
 import { homedir } from 'node:os'
 import { join } from 'node:path'
-import { mkdir } from 'node:fs/promises'
+import { mkdir, rm } from 'node:fs/promises'
 
 export const VISSOR_HOME =
   process.env.VISSOR_HOME ?? join(homedir(), '.vissor')
@@ -40,6 +40,18 @@ export function assetPath(assetId: string, ext: string): string {
 export async function ensureDirs(): Promise<void> {
   await mkdir(PROJECTS_DIR, { recursive: true })
   await mkdir(ASSETS_DIR, { recursive: true })
+  await mkdir(SCRATCH_DIR, { recursive: true })
+}
+
+/**
+ * Clear the scratch dir on startup. Each in-flight turn gets its own
+ * per-turn subdir here; if the server was killed before a turn
+ * cleaned up (ungraceful shutdown, crash, SIGKILL), those dirs are
+ * stranded. At boot the in-memory turn mutex is empty, so nothing is
+ * actively using scratch and a full wipe is safe.
+ */
+export async function cleanScratchOnBoot(): Promise<void> {
+  await rm(SCRATCH_DIR, { recursive: true, force: true }).catch(() => undefined)
   await mkdir(SCRATCH_DIR, { recursive: true })
 }
 

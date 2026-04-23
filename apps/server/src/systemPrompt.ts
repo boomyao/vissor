@@ -8,14 +8,17 @@
  *
  * Keep this short — every token costs latency on every turn.
  */
-// Keep the wrapping MINIMAL. In testing, heavy rule-lists cause codex
-// to (a) refuse with "no tool available" or (b) hallucinate files via
-// apply_patch. The shortest nudge that consistently steers toward
-// image_gen is the clause "Use whatever image-generation tool is
-// available" with NO other editorialising. Everything else we
-// appended made codex worse.
+// Tool selection is the hard part. Codex has two paths to image
+// output: the native `image_gen` tool (writes to
+// ~/.codex/generated_images/<thread>/) and the `imagegen` skill
+// (shell commands writing to cwd). We watch both, but the native
+// tool is ~25% faster and more reliable, so the prompt nudges
+// toward it and deliberately does NOT mention "save to cwd" —
+// the previous version ended that sentence with "…in the current
+// working directory" and that one phrase flipped the model into
+// the shell-skill path every time.
 const BASE_RULES =
-  'Use whatever image-generation tool is available (e.g. image_gen) to fulfil the request below. Save output files in the current working directory. Produce 2 visually distinct variants unless the user specifies a different count — call the tool twice with different prompts or seeds. Do not invent filenames or claim output that was not actually generated. After tool invocation, reply with a single short sentence.'
+  'Generate the requested image(s) using the built-in `image_gen` tool. Do not invoke the `imagegen` skill, shell commands, or apply_patch. Produce 2 visually distinct variants unless the user specifies a different count — call the tool twice with different prompts or seeds. Do not invent filenames or claim output you did not actually generate. After the tool finishes, reply with one short sentence describing what you produced.'
 
 const ASPECT_DESCRIPTIONS: Record<string, string> = {
   square: 'Canvas: 1:1 square.',

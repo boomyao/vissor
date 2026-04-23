@@ -138,6 +138,17 @@ export function CommandBar(): JSX.Element {
     }
   }
 
+  const onCancel = useCallback(async () => {
+    if (!project || !activeTurnId) return
+    try {
+      await api.cancelChat(project.id, activeTurnId)
+    } catch {
+      // If the HTTP call fails, the turn will still eventually resolve
+      // via the normal event stream; swallow so we don't show a scary
+      // error for a best-effort abort.
+    }
+  }, [activeTurnId, project])
+
   const lastAgent = [...chat].reverse().find((m) => m.role === 'agent')
   const statusPill =
     activeTurnId && lastAgent?.role === 'agent'
@@ -318,19 +329,36 @@ export function CommandBar(): JSX.Element {
           <StylePicker value={stylePreset} onChange={setStylePreset} />
           <AspectPicker value={aspectRatio} onChange={setAspectRatio} />
         </div>
-        <button
-          type="submit"
-          disabled={!canSend}
-          style={{
-            background: canSend ? 'var(--accent)' : undefined,
-            borderColor: canSend ? 'var(--accent)' : undefined,
-            color: canSend ? 'white' : undefined,
-            fontWeight: 600,
-            padding: '8px 18px',
-          }}
-        >
-          Send
-        </button>
+        {activeTurnId ? (
+          <button
+            type="button"
+            onClick={() => void onCancel()}
+            style={{
+              background: 'var(--bg-elev)',
+              borderColor: 'var(--border-strong)',
+              color: 'var(--fg)',
+              fontWeight: 600,
+              padding: '8px 18px',
+            }}
+            title="Cancel this turn"
+          >
+            Cancel
+          </button>
+        ) : (
+          <button
+            type="submit"
+            disabled={!canSend}
+            style={{
+              background: canSend ? 'var(--accent)' : undefined,
+              borderColor: canSend ? 'var(--accent)' : undefined,
+              color: canSend ? 'white' : undefined,
+              fontWeight: 600,
+              padding: '8px 18px',
+            }}
+          >
+            Send
+          </button>
+        )}
       </div>
     </form>
   )

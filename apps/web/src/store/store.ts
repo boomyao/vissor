@@ -92,18 +92,27 @@ export const useStore = create<AppState>((set, get) => ({
 
   setProjects: (list) => set({ projects: list }),
 
-  loadSnapshot: (snap) =>
+  loadSnapshot: (snap) => {
+    // Derive activeTurnId from chat: any agent message still marked
+    // `streaming` means there's a turn in flight on the server that
+    // the UI should consider active (Cancel button, "Thinking…" pill,
+    // etc). Without this, a snapshot reload during a live turn —
+    // either at boot or after an SSE reconnect — would leave the UI
+    // in "no active turn" state while the turn keeps running.
+    const streamingAgent = [...snap.chat]
+      .reverse()
+      .find((m) => m.role === 'agent' && m.status === 'streaming')
     set({
       project: snap.project,
       items: snap.items,
       assets: snap.assets,
       chat: snap.chat,
-      // Switching projects wipes ephemeral view state.
       selection: new Set(),
       attachedAssetIds: [],
       drawerAssetId: null,
-      activeTurnId: null,
-    }),
+      activeTurnId: streamingAgent?.turnId ?? null,
+    })
+  },
 
   reset: () =>
     set({

@@ -22,6 +22,7 @@ import {
   updateProject,
 } from '../store.js'
 import { projectBus } from '../bus.js'
+import { cancelAndWaitForProjectIdle } from '../codex.js'
 
 export async function projectsRoutes(app: FastifyInstance): Promise<void> {
   app.get('/api/projects', async () => {
@@ -59,6 +60,11 @@ export async function projectsRoutes(app: FastifyInstance): Promise<void> {
     async (req, reply) => {
       const current = await getProject(req.params.id)
       if (!current) return reply.code(404).send({ error: 'not_found' })
+      // Cancel any in-flight turn and wait for its finaliser to
+      // release resources before we wipe the project dir. Otherwise
+      // the finaliser recreates chat.jsonl etc. via ensureProjectDir
+      // and we end up with ghost project state on disk.
+      await cancelAndWaitForProjectIdle(req.params.id)
       const ok = await deleteProject(req.params.id)
       if (!ok) return reply.code(500).send({ error: 'delete_failed' })
       return { ok: true }
@@ -77,21 +83,34 @@ export async function projectsRoutes(app: FastifyInstance): Promise<void> {
       reply.raw.setHeader('X-Accel-Buffering', 'no')
       reply.raw.flushHeaders?.()
 
+      // Writes can race with client disconnects: the socket might
+      // already be destroyed by the time we flush. Skip silently —
+      // the 'close' handler below will unsubscribe and clear the
+      // timer within milliseconds anyway.
+      const safeWrite = (chunk: string): void => {
+        if (reply.raw.destroyed || reply.raw.writableEnded) return
+        try {
+          reply.raw.write(chunk)
+        } catch {
+          // swallow — socket tore down between the check and the write
+        }
+      }
+
       // Initial heartbeat so the browser commits the connection.
-      reply.raw.write(': ok\n\n')
+      safeWrite(': ok\n\n')
 
       const heartbeat = setInterval(() => {
-        reply.raw.write(': ping\n\n')
+        safeWrite(': ping\n\n')
       }, 15_000)
 
       const unsub = projectBus.subscribe(req.params.id, (event) => {
-        reply.raw.write(`data: ${JSON.stringify(event)}\n\n`)
+        safeWrite(`data: ${JSON.stringify(event)}\n\n`)
       })
 
       req.raw.on('close', () => {
         clearInterval(heartbeat)
         unsub()
-        reply.raw.end()
+        if (!reply.raw.writableEnded) reply.raw.end()
       })
     },
   )

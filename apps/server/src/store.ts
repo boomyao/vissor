@@ -1,5 +1,5 @@
 import { randomUUID } from 'node:crypto'
-import { stat, readFile, writeFile, readdir, appendFile, copyFile, rm } from 'node:fs/promises'
+import { stat, readFile, writeFile, readdir, appendFile, copyFile, rm, rename } from 'node:fs/promises'
 import { createHash } from 'node:crypto'
 import { extname } from 'node:path'
 import type {
@@ -42,17 +42,43 @@ async function readJson<T>(path: string): Promise<T | null> {
   }
 }
 
+/**
+ * Write-then-rename for full-file overwrites. Without this, a crash
+ * or SIGKILL mid-write truncates the target file and readJsonl
+ * downstream throws on the partial last line — taking the whole
+ * project with it. rename(2) is atomic on POSIX within a single
+ * filesystem, so readers see either the old full file or the new
+ * full file, never a half-written one.
+ */
+async function atomicWriteFile(path: string, data: string): Promise<void> {
+  const tmp = `${path}.tmp-${process.pid}-${Date.now()}`
+  await writeFile(tmp, data, 'utf8')
+  await rename(tmp, path)
+}
+
 async function writeJson(path: string, value: Json): Promise<void> {
-  await writeFile(path, JSON.stringify(value, null, 2), 'utf8')
+  await atomicWriteFile(path, JSON.stringify(value, null, 2))
 }
 
 async function readJsonl<T>(path: string): Promise<T[]> {
   try {
     const raw = await readFile(path, 'utf8')
-    return raw
-      .split('\n')
-      .filter((line) => line.trim().length > 0)
-      .map((line) => JSON.parse(line) as T)
+    const out: T[] = []
+    for (const line of raw.split('\n')) {
+      if (!line.trim().length) continue
+      try {
+        out.push(JSON.parse(line) as T)
+      } catch {
+        // Skip malformed lines rather than failing the whole read.
+        // Usually caused by an interrupted append — the last line was
+        // partially flushed. Losing one line beats bricking the project.
+        // eslint-disable-next-line no-console
+        console.error(
+          `[store] skipping malformed line in ${path}: ${line.slice(0, 100)}`,
+        )
+      }
+    }
+    return out
   } catch (err: unknown) {
     if ((err as NodeJS.ErrnoException).code === 'ENOENT') return []
     throw err
@@ -178,7 +204,7 @@ export async function rewriteChat(
 ): Promise<void> {
   await ensureProjectDir(projectId)
   const body = messages.map((m) => JSON.stringify(m)).join('\n') + (messages.length ? '\n' : '')
-  await writeFile(projectChatPath(projectId), body, 'utf8')
+  await atomicWriteFile(projectChatPath(projectId), body)
 }
 
 // ---------- assets ----------

@@ -20,7 +20,12 @@ export async function uploadRoutes(app: FastifyInstance): Promise<void> {
     try {
       for await (const part of parts) {
         const buf = await part.toBuffer()
-        const tmp = join(tmpdir(), `vissor-upload-${randomUUID()}-${part.filename}`)
+        // Keep only the UUID for the tmp path — the user-supplied
+        // filename could contain path separators or traversal
+        // sequences and we don't want those resolved into our
+        // filesystem. The original name is captured separately for
+        // display via originalFilename.
+        const tmp = join(tmpdir(), `vissor-upload-${randomUUID()}`)
         await writeFile(tmp, buf)
         stagedTmp.push(tmp)
         const asset = await ingestFile(projectId, tmp, {

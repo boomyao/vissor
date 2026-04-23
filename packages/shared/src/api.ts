@@ -115,6 +115,7 @@ export const Routes = {
   projectDelete: (id: string) => `/api/projects/${id}`,
   projectStream: (id: string) => `/api/projects/${id}/stream`,
   chatSend: '/api/chat',
+  chatCancel: '/api/chat/cancel',
   uploads: '/api/uploads',
   file: (assetId: string) => `/api/files/${assetId}`,
   itemsPlace: (projectId: string) => `/api/projects/${projectId}/items`,

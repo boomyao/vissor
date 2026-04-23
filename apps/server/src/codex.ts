@@ -118,16 +118,75 @@ export async function runTurn(params: RunTurnParams): Promise<void> {
   )
 }
 
+// ---------- cancel plumbing ----------
+
+interface CancelHandle {
+  turnId: string
+  cancel: () => void
+}
+
+/**
+ * Per-project active cancel handle. At most one in-flight turn exists
+ * per project (the mutex guarantees this), so a Map keyed by projectId
+ * is enough — no queueing needed.
+ */
+const cancelHandles = new Map<string, CancelHandle>()
+
+/**
+ * Invoked by the HTTP cancel route. Returns true if a matching
+ * in-flight turn existed and was signalled, false otherwise (the turn
+ * finished on its own, or it was never running here).
+ */
+export function cancelTurn(projectId: string, turnId: string): boolean {
+  const h = cancelHandles.get(projectId)
+  if (!h || h.turnId !== turnId) return false
+  h.cancel()
+  return true
+}
+
+/**
+ * Shutdown path: signal every in-flight turn to abort. Each turn's
+ * finaliser will then mark the agent message failed before the
+ * process exits. The next startup's `reconcileStuckTurns` also
+ * catches anything that raced past us.
+ */
+export function cancelAllTurns(): number {
+  const n = cancelHandles.size
+  for (const h of cancelHandles.values()) h.cancel()
+  return n
+}
+
+/**
+ * Signal any in-flight turn for a project to abort, then wait for
+ * the project's turn mutex to idle — i.e. the finaliser has written
+ * chat.jsonl and released resources. Used before destructive
+ * project-level operations (delete, reset) so the finaliser can't
+ * race with us and resurrect a deleted project by recreating its
+ * chat/items files mid-delete.
+ */
+export async function cancelAndWaitForProjectIdle(
+  projectId: string,
+): Promise<void> {
+  cancelHandles.get(projectId)?.cancel()
+  // Enqueue a no-op under the same key as runTurn to block until
+  // any current turn's finaliser has released the mutex.
+  await runExclusive(`turn:${projectId}`, async () => undefined)
+}
+
+interface AttemptResult {
+  variantCount: number
+  textChunks: string[]
+  turnError: string | null
+  exitCode: number | null
+  ourKill: boolean
+  didFail: boolean
+  errorText: string | undefined
+  stalled: boolean
+  canceled: boolean
+}
+
 async function runTurnInner(params: RunTurnParams): Promise<void> {
-  const {
-    projectId,
-    turnId,
-    text,
-    attachedImagePaths,
-    variantCount: requestedVariantCount,
-    stylePreset,
-    aspectRatio,
-  } = params
+  const { projectId, turnId, variantCount: requestedVariantCount } = params
 
   // 1. Create & persist the agent message skeleton.
   const agentMessageId = randomUUID()
@@ -156,10 +215,81 @@ async function runTurnInner(params: RunTurnParams): Promise<void> {
         : `Generating ${requestedCount} variants…`,
   })
 
-  const project = await getProject(projectId)
-  const priorSessionId = project?.codexSessionId
+  try {
+    await runTurnCore({
+      params,
+      agentMessageId,
+      requestedCount,
+    })
+  } catch (err) {
+    // Safety net: any unexpected throw from the core path would have
+    // bypassed the classification-based finaliser, leaving the agent
+    // message stuck as `streaming`. Mark it failed explicitly so the
+    // UI doesn't spin forever. Best-effort — we swallow any error
+    // writing this, otherwise we just leak the rescue too.
+    try {
+      const chat = await readChat(projectId)
+      const stillStreaming = chat.some(
+        (m) =>
+          m.role === 'agent' &&
+          m.id === agentMessageId &&
+          m.status === 'streaming',
+      )
+      if (stillStreaming) {
+        const msg =
+          err instanceof Error ? err.message : 'unknown internal error'
+        const next = chat.map<ChatMessage>((m) => {
+          if (m.role !== 'agent' || m.id !== agentMessageId) return m
+          return {
+            ...m,
+            status: 'failed',
+            error: `Internal error: ${msg}`,
+            completedAt: Date.now(),
+          } satisfies AgentMessage
+        })
+        await rewriteChat(projectId, next)
+        projectBus.publish(projectId, {
+          kind: 'turn.failed',
+          turnId,
+          error: `Internal error: ${msg}`,
+        })
+      }
+    } catch {
+      // intentional — don't double-throw during rescue
+    }
+    throw err
+  }
+}
 
-  // 2. Build argv — NO -C on exec resume, image refs as variadic with --.
+interface RunTurnCoreParams {
+  params: RunTurnParams
+  agentMessageId: string
+  requestedCount: number
+}
+
+async function runTurnCore({
+  params,
+  agentMessageId,
+  requestedCount,
+}: RunTurnCoreParams): Promise<void> {
+  const {
+    projectId,
+    turnId,
+    text,
+    attachedImagePaths,
+    variantCount: requestedVariantCount,
+    stylePreset,
+    aspectRatio,
+  } = params
+
+  const project = await getProject(projectId)
+  // Capture the session id ONCE, before any attempt runs. If attempt 1
+  // crashes mid-thread.started, the store may now hold a broken thread
+  // we don't want to resume from on the retry.
+  const initialPriorSessionId = project?.codexSessionId
+
+  // 2. Build argv pieces. commonArgs + promptForCodex are attempt-invariant;
+  //    the session-id component varies per attempt (retry can opt out).
   const imageArgs: string[] = []
   for (const p of attachedImagePaths) {
     imageArgs.push('-i', p)
@@ -168,15 +298,14 @@ async function runTurnInner(params: RunTurnParams): Promise<void> {
     '--json',
     '--dangerously-bypass-approvals-and-sandbox',
     '--skip-git-repo-check',
-    // Defensive override — users in the wild sometimes carry invalid
-    // config.toml values (e.g. `model_reasoning_effort = "xhigh"` which
-    // 0.122 rejects). We pick "low" because this is a design-agent
-    // workflow (describe, generate, iterate); deep coding-style
-    // reasoning just burns minutes with no quality gain for vision or
-    // image generation. Upgrade if we ever need codex to do heavier
-    // planning.
-    '-c',
-    'model_reasoning_effort=low',
+    // Intentionally DO NOT override model_reasoning_effort. Earlier
+    // code forced "low" on the theory that image tasks don't need
+    // heavy reasoning; in practice that starved the model and made it
+    // reach for the fake `imagegen` shell skill instead of the native
+    // image_gen tool, producing zero-image "successful" turns. The
+    // ChatGPT Desktop client runs at the user's configured effort
+    // (often "xhigh") and that's what reliably picks image_gen.
+    // Keep that parity — inherit whatever is in ~/.codex/config.toml.
     ...imageArgs,
   ]
   // Wrap the user's text in the design-agent system prompt. Codex
@@ -186,11 +315,110 @@ async function runTurnInner(params: RunTurnParams): Promise<void> {
   const promptForCodex = buildPromptForCodex({
     userText: text,
     hasAttachments: attachedImagePaths.length > 0,
-    isResume: !!priorSessionId,
+    isResume: !!initialPriorSessionId,
     variantCount: requestedVariantCount,
     stylePreset,
     aspectRatio,
   })
+
+  // 3. Attempt loop. If codex goes completely silent (dead-air guard
+  //    fires) and produced nothing, that's almost always an OpenAI
+  //    upstream hiccup — retry once, transparently, using the session
+  //    id captured above so we don't resume a broken thread.
+  const MAX_ATTEMPTS = 2
+  let lastResult: AttemptResult | null = null
+  for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
+    if (attempt > 1) {
+      projectBus.publish(projectId, {
+        kind: 'turn.status',
+        turnId,
+        statusLine: `Upstream hiccup — retrying (attempt ${attempt} of ${MAX_ATTEMPTS})…`,
+      })
+    }
+    lastResult = await runOneAttempt({
+      projectId,
+      turnId,
+      agentMessageId,
+      priorSessionId: initialPriorSessionId,
+      commonArgs,
+      promptForCodex,
+      requestedCount,
+      aspectRatio,
+    })
+    if (lastResult.canceled) break
+    // Retry on any zero-image failure — covers both "silent stall"
+    // and "codex picked the wrong tool and claimed success" cases. If
+    // codex produced at least one image, keep what we got.
+    const retryable = lastResult.didFail && lastResult.variantCount === 0
+    if (!retryable) break
+    if (attempt >= MAX_ATTEMPTS) break
+    console.error(
+      `[codex:${projectId}] attempt ${attempt} produced 0 images (${lastResult.errorText}) — retrying`,
+    )
+  }
+  const result = lastResult!
+
+  // 4. Finalise agent message. Everything in the attempt loop was
+  //    attempt-local; here we do the one-time chat.jsonl rewrite and
+  //    emit the terminal turn.completed / turn.failed bus events.
+  const finalText = result.textChunks.join('\n\n')
+  const chat = await readChat(projectId)
+  const finalChat = chat.map<ChatMessage>((m) => {
+    if (m.role !== 'agent' || m.id !== agentMessageId) return m
+    return {
+      ...m,
+      status: result.didFail ? 'failed' : 'completed',
+      text: finalText || m.text,
+      error: result.errorText,
+      completedAt: Date.now(),
+    } satisfies AgentMessage
+  })
+  await rewriteChat(projectId, finalChat)
+  // Send one final text snapshot so any client that only subscribed late
+  // has the aggregated result even if they missed the deltas.
+  if (finalText) {
+    projectBus.publish(projectId, { kind: 'turn.text.final', turnId, text: finalText })
+  }
+  if (result.didFail) {
+    projectBus.publish(projectId, {
+      kind: 'turn.failed',
+      turnId,
+      error: result.errorText ?? 'codex failed',
+    })
+  } else {
+    projectBus.publish(projectId, { kind: 'turn.completed', turnId })
+  }
+}
+
+interface OneAttemptParams {
+  projectId: string
+  turnId: string
+  agentMessageId: string
+  priorSessionId: string | undefined
+  commonArgs: string[]
+  promptForCodex: string
+  requestedCount: number
+  aspectRatio?: string
+}
+
+/**
+ * Spawn codex once, stream its output, and classify the outcome.
+ * Caller decides whether to retry based on {@link AttemptResult.stalled}.
+ * All per-attempt state (stdout buffer, dead-air timer, variant count)
+ * is scoped to this function so retries start from a clean slate.
+ */
+async function runOneAttempt(p: OneAttemptParams): Promise<AttemptResult> {
+  const {
+    projectId,
+    turnId,
+    agentMessageId,
+    priorSessionId,
+    commonArgs,
+    promptForCodex,
+    requestedCount,
+    aspectRatio,
+  } = p
+
   // Option ordering matters for `codex exec resume`: its clap usage is
   // `[OPTIONS] [SESSION_ID] [PROMPT]`, so flags have to come BEFORE
   // the session id, not after. Forget this and codex refuses with
@@ -199,7 +427,7 @@ async function runTurnInner(params: RunTurnParams): Promise<void> {
     ? ['exec', 'resume', ...commonArgs, priorSessionId, '--', promptForCodex]
     : ['exec', ...commonArgs, '--', promptForCodex]
 
-  // 3. Give codex a dedicated scratch dir as its cwd. Codex's tool
+  // Give codex a dedicated scratch dir as its cwd. Codex's tool
   // choice is unreliable — for visual tasks it sometimes invokes
   // image_gen (writes to ~/.codex/generated_images/<thread>/), and
   // sometimes falls back to `magick`/`convert` shell commands that
@@ -221,18 +449,17 @@ async function runTurnInner(params: RunTurnParams): Promise<void> {
   })
   child.stdin.end()
 
-  // 4. Read stderr. Codex prints retry/disconnect chatter here when the
-  //    upstream stream drops; count that as liveness so the dead-air
-  //    guard doesn't kill a process that's genuinely trying to recover.
+  // Stderr. Codex prints retry/disconnect chatter here when the
+  // upstream stream drops; count that as liveness so the dead-air
+  // guard doesn't kill a process that's genuinely trying to recover.
   child.stderr.on('data', (chunk) => {
     touchActivity()
     process.stderr.write(`[codex:${projectId}] ${chunk}`)
   })
 
-  // 5. Register a handler with the project-scoped image watcher. We
-  // do this once we know the thread id (either from prior session or
-  // from thread.started below). The turn mutex guarantees we're the
-  // only handler active for this project at a time.
+  // If we already know the thread id from a previous turn, start
+  // watching it before we see thread.started. Otherwise we'll
+  // register the handler when that event arrives below.
   if (priorSessionId) {
     await ensureWatcher(projectId, priorSessionId)
     setHandler(projectId, async (abs) => {
@@ -240,7 +467,7 @@ async function runTurnInner(params: RunTurnParams): Promise<void> {
     })
   }
 
-  // 6. Parse stdout JSONL.
+  // Per-attempt state.
   let variantCount = 0
   let stdoutBuf = ''
   // Codex 0.122 can emit multiple `item.completed` agent_messages per turn
@@ -259,14 +486,37 @@ async function runTurnInner(params: RunTurnParams): Promise<void> {
   // When WE choose to kill, we flip `ourKill` so the exit-handler
   // doesn't mis-classify it as a crash.
   let ourKill = false
+  let stalled = false
+  let canceled = false
   let lastActivity = Date.now()
   let slowWarned = false
   const touchActivity = () => {
     lastActivity = Date.now()
     slowWarned = false
   }
-  const SLOW_WARN_MS = 45_000
-  const DEAD_AIR_MS = 120_000
+
+  // Expose a cancel entry-point while this attempt is running. The HTTP
+  // cancel route invokes it to abort the in-flight turn.
+  cancelHandles.set(projectId, {
+    turnId,
+    cancel: () => {
+      if (ourKill) return
+      canceled = true
+      ourKill = true
+      turnError = 'Canceled by user.'
+      try {
+        child.kill('SIGTERM')
+      } catch {
+        // process may already be exiting
+      }
+    },
+  })
+  const SLOW_WARN_MS = 60_000
+  // At xhigh reasoning effort the model can legitimately go silent for
+  // ~2 min between `reasoning` start and the first image_gen tool
+  // call (observed 2m9s in the ChatGPT Desktop reference session).
+  // Pad past that, but not so far that a true stall is invisible.
+  const DEAD_AIR_MS = 180_000
   const deadAirTimer = setInterval(() => {
     if (ourKill) return
     const idle = Date.now() - lastActivity
@@ -282,8 +532,9 @@ async function runTurnInner(params: RunTurnParams): Promise<void> {
       turnError =
         variantCount > 0
           ? `No response from codex for ${Math.round(DEAD_AIR_MS / 1000)}s — keeping the ${variantCount} variant${variantCount === 1 ? '' : 's'} already produced.`
-          : `No response from codex for ${Math.round(DEAD_AIR_MS / 1000)}s (OpenAI upstream stalled). Try again.`
+          : `No response from codex for ${Math.round(DEAD_AIR_MS / 1000)}s (OpenAI upstream stalled).`
       ourKill = true
+      stalled = true
       child.kill('SIGTERM')
     }
   }, 5_000)
@@ -416,7 +667,7 @@ async function runTurnInner(params: RunTurnParams): Promise<void> {
     for (const line of lines) void handleLine(line)
   })
 
-  // 7. Wait for exit.
+  // Wait for exit.
   await new Promise<void>((resolve) => {
     child.once('close', () => resolve())
     child.once('error', () => resolve())
@@ -447,8 +698,12 @@ async function runTurnInner(params: RunTurnParams): Promise<void> {
   await rm(scratch, { recursive: true, force: true }).catch(() => undefined)
 
   clearInterval(deadAirTimer)
+  // Release the cancel handle — only do this if we're still the registered
+  // owner (defensive; the mutex should already prevent concurrent owners).
+  const h = cancelHandles.get(projectId)
+  if (h && h.turnId === turnId) cancelHandles.delete(projectId)
 
-  // 8. Finalise agent message. Classification rules:
+  // Classify the outcome:
   //   - Clean exit (code 0): completed.
   //   - Non-zero exit code: failed.
   //   - Killed by us (ourKill): completed if we already got at least
@@ -457,53 +712,43 @@ async function runTurnInner(params: RunTurnParams): Promise<void> {
   //   - Killed by anything else (exitCode null, ourKill false): failed
   //     — user or the system took codex out.
   //   - Also fail if any inline error event was observed on stdout.
-  const exitedCleanly = child.exitCode === 0
-  const exitedBadly =
-    child.exitCode !== null && child.exitCode !== 0
-  const killedByUs = child.exitCode === null && ourKill
-  const killedByOther = child.exitCode === null && !ourKill
+  const exitCode = child.exitCode
+  const exitedBadly = exitCode !== null && exitCode !== 0
+  const killedByOther = exitCode === null && !ourKill
+  // Clean-exit + zero images is a failure, not a success: codex
+  // sometimes picks the wrong tool (e.g. `imagegen` skill that shells
+  // out to a CLI that doesn't exist) and claims completion without
+  // writing any files. The user's intent was always "make me pictures",
+  // so no pictures === failed turn.
+  const cleanExitNoOutput =
+    exitCode === 0 && variantCount === 0
   const didFail =
     turnError !== null ||
     exitedBadly ||
     killedByOther ||
-    (killedByUs && variantCount === 0)
-  // Suppress the irrelevant exit code error note if this was just an
-  // ordinary clean exit.
-  void exitedCleanly
-  const finalText = textChunks.join('\n\n')
+    (ourKill && variantCount === 0 && stalled) ||
+    cleanExitNoOutput
   const errorText = didFail
     ? turnError ??
       (exitedBadly
-        ? `codex exited with code ${child.exitCode}`
+        ? `codex exited with code ${exitCode}`
         : killedByOther
           ? 'codex process was terminated'
-          : 'codex produced no output')
+          : cleanExitNoOutput
+            ? 'codex finished without producing any images. Try rephrasing or retrying.'
+            : 'codex produced no output')
     : undefined
-  const chat = await readChat(projectId)
-  const finalChat = chat.map<ChatMessage>((m) => {
-    if (m.role !== 'agent' || m.id !== agentMessageId) return m
-    return {
-      ...m,
-      status: didFail ? 'failed' : 'completed',
-      text: finalText || m.text,
-      error: errorText,
-      completedAt: Date.now(),
-    } satisfies AgentMessage
-  })
-  await rewriteChat(projectId, finalChat)
-  // Send one final text snapshot so any client that only subscribed late
-  // has the aggregated result even if they missed the deltas.
-  if (finalText) {
-    projectBus.publish(projectId, { kind: 'turn.text.final', turnId, text: finalText })
-  }
-  if (didFail) {
-    projectBus.publish(projectId, {
-      kind: 'turn.failed',
-      turnId,
-      error: errorText ?? 'codex failed',
-    })
-  } else {
-    projectBus.publish(projectId, { kind: 'turn.completed', turnId })
+
+  return {
+    variantCount,
+    textChunks,
+    turnError,
+    exitCode,
+    ourKill,
+    didFail,
+    errorText,
+    stalled: stalled && variantCount === 0,
+    canceled,
   }
 }
 

@@ -5,7 +5,7 @@ import type {
   ChatSendResponse,
   UserMessage,
 } from '@vissor/shared'
-import { appendUserMessage, runTurn } from '../codex.js'
+import { appendUserMessage, cancelTurn, runTurn } from '../codex.js'
 import { getProject, readAssetsIndex } from '../store.js'
 
 export async function chatRoutes(app: FastifyInstance): Promise<void> {
@@ -62,4 +62,16 @@ export async function chatRoutes(app: FastifyInstance): Promise<void> {
       userMessage,
     } satisfies ChatSendResponse
   })
+
+  app.post<{ Body: { projectId?: string; turnId?: string } }>(
+    '/api/chat/cancel',
+    async (req, reply) => {
+      const { projectId, turnId } = req.body ?? {}
+      if (!projectId || !turnId) {
+        return reply.code(400).send({ error: 'bad_request' })
+      }
+      const canceled = cancelTurn(projectId, turnId)
+      return { canceled }
+    },
+  )
 }

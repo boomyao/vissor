@@ -2,7 +2,8 @@ import Fastify from 'fastify'
 import cors from '@fastify/cors'
 import multipart from '@fastify/multipart'
 import type { AgentMessage, ChatMessage } from '@vissor/shared'
-import { ensureDirs, VISSOR_HOME } from './paths.js'
+import { cancelAllTurns } from './codex.js'
+import { cleanScratchOnBoot, ensureDirs, VISSOR_HOME } from './paths.js'
 import { projectsRoutes } from './routes/projects.js'
 import { chatRoutes } from './routes/chat.js'
 import { uploadRoutes } from './routes/uploads.js'
@@ -37,6 +38,7 @@ async function reconcileStuckTurns(): Promise<void> {
 
 async function main(): Promise<void> {
   await ensureDirs()
+  await cleanScratchOnBoot()
   await reconcileStuckTurns()
 
   const app = Fastify({
@@ -61,7 +63,36 @@ async function main(): Promise<void> {
   const port = Number(process.env.PORT ?? 5174)
   await app.listen({ port, host: '127.0.0.1' })
   app.log.info({ port, home: VISSOR_HOME }, 'vissor server up')
+
+  // Graceful shutdown: stop accepting new connections, signal any
+  // in-flight codex children to wind down, then exit. If someone
+  // SIGKILLs us anyway the next boot's reconcileStuckTurns cleans up.
+  let shuttingDown = false
+  const shutdown = (signal: NodeJS.Signals) => {
+    if (shuttingDown) return
+    shuttingDown = true
+    const killed = cancelAllTurns()
+    app.log.info({ signal, killed }, 'vissor server shutting down')
+    const hardExit = setTimeout(() => process.exit(0), 3_000)
+    hardExit.unref()
+    void app.close().then(() => process.exit(0))
+  }
+  process.on('SIGTERM', shutdown)
+  process.on('SIGINT', shutdown)
 }
+
+// Global safety nets. The server has a lot of fire-and-forget work
+// (SSE writes, chat.jsonl rewrites, codex child lifecycle), so a stray
+// unhandled rejection is more likely to be a bug we want to see than
+// something worth crashing over. Log both, keep running.
+process.on('unhandledRejection', (reason) => {
+  // eslint-disable-next-line no-console
+  console.error('[vissor:server] unhandledRejection', reason)
+})
+process.on('uncaughtException', (err) => {
+  // eslint-disable-next-line no-console
+  console.error('[vissor:server] uncaughtException', err)
+})
 
 main().catch((err) => {
   // eslint-disable-next-line no-console

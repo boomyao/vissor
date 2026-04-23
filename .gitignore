@@ -17,3 +17,6 @@ coverage
 # Codex scratch / generated output dirs
 output
 tmp
+
+# Claude Code local state
+.claude
