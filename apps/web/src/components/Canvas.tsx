@@ -403,6 +403,65 @@ export function Canvas(): JSX.Element {
     [],
   )
 
+  // Clipboard-paste → drop an image (or multiple) straight onto the
+  // canvas. Matches Figma's muscle memory: screenshot → Cmd-V.
+  // Ignored when the user is typing into an input/textarea; otherwise
+  // we'd steal paste from the composer.
+  useEffect(() => {
+    const onPaste = async (e: ClipboardEvent): Promise<void> => {
+      const tag = (e.target as HTMLElement | null)?.tagName
+      if (
+        tag === 'INPUT' ||
+        tag === 'TEXTAREA' ||
+        (e.target as HTMLElement | null)?.isContentEditable
+      )
+        return
+      if (!e.clipboardData) return
+      const files: File[] = []
+      for (const item of Array.from(e.clipboardData.items)) {
+        if (item.kind !== 'file' || !item.type.startsWith('image/')) continue
+        const f = item.getAsFile()
+        if (f) files.push(f)
+      }
+      if (files.length === 0) return
+      e.preventDefault()
+      const { project, camera } = useStore.getState()
+      if (!project) return
+      // Drop at the current viewport centre in world space.
+      const vw = window.innerWidth
+      const vh = window.innerHeight
+      const worldX = (vw / 2 - camera.x) / camera.scale
+      const worldY = (vh / 2 - camera.y) / camera.scale
+      try {
+        const dims = await Promise.all(files.map(readImageSize))
+        const beforeIds = new Set(useStore.getState().items.map((i) => i.id))
+        const { assets } = await api.upload(project.id, files)
+        const GAP = 16
+        let cursorX = worldX
+        for (let i = 0; i < assets.length; i++) {
+          const a = assets[i]
+          const d = dims[i] ?? { w: 320, h: 320 }
+          const scale = Math.min(1, 512 / Math.max(d.w, d.h))
+          const w = Math.round(d.w * scale)
+          const h = Math.round(d.h * scale)
+          await api.placeAsset(project.id, a.id, cursorX, worldY, { w, h })
+          cursorX += w + GAP
+        }
+        setTimeout(() => {
+          const newItems = useStore
+            .getState()
+            .items.filter((i) => !beforeIds.has(i.id))
+          if (newItems.length) pushHistory({ kind: 'add', items: newItems })
+        }, 300)
+      } catch (err) {
+        // eslint-disable-next-line no-console
+        console.warn('paste upload failed', err)
+      }
+    }
+    window.addEventListener('paste', onPaste)
+    return () => window.removeEventListener('paste', onPaste)
+  }, [])
+
   const onDoubleClick = useCallback(
     async (e: React.MouseEvent<HTMLDivElement>) => {
       if (e.target !== e.currentTarget) return
