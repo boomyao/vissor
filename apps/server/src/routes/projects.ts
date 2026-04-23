@@ -48,9 +48,14 @@ export async function projectsRoutes(app: FastifyInstance): Promise<void> {
   app.patch<{ Params: { id: string }; Body: RenameProjectRequest }>(
     '/api/projects/:id',
     async (req, reply) => {
+      const patch: { name?: string; canvasBg?: string } = {}
       const name = req.body?.name?.trim()
-      if (!name) return reply.code(400).send({ error: 'name_required' })
-      const next = await updateProject(req.params.id, { name })
+      if (typeof name === 'string' && name.length > 0) patch.name = name
+      if (typeof req.body?.canvasBg === 'string') patch.canvasBg = req.body.canvasBg
+      if (Object.keys(patch).length === 0) {
+        return reply.code(400).send({ error: 'nothing_to_patch' })
+      }
+      const next = await updateProject(req.params.id, patch)
       if (!next) return reply.code(404).send({ error: 'not_found' })
       return { project: next }
     },

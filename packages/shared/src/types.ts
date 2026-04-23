@@ -13,6 +13,8 @@ export interface Project {
   updatedAt: number
   /** Opaque codex thread id, assigned after the first turn. */
   codexSessionId?: string
+  /** Canvas background colour (CSS string). Falls back to theme bg. */
+  canvasBg?: string
 }
 
 /** Stored file reference (user uploads and agent-generated outputs alike). */

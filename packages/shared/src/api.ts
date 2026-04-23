@@ -84,9 +84,14 @@ export interface PatchItemRequest {
   text?: string
 }
 
-/** HTTP route catalogue — single source of truth between web + server. */
+/**
+ * PATCH /api/projects/:id body. Both fields optional, but the server
+ * rejects a request that carries neither. Historically known as
+ * `RenameProjectRequest` because name was the only patchable field.
+ */
 export interface RenameProjectRequest {
-  name: string
+  name?: string
+  canvasBg?: string
 }
 
 export interface PlaceAssetRequest {

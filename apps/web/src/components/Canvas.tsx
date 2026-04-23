@@ -22,6 +22,7 @@ export function Canvas(): JSX.Element {
   const panBy = useStore((s) => s.panBy)
   const zoomAt = useStore((s) => s.zoomAt)
   const clearSelection = useStore((s) => s.clearSelection)
+  const canvasBg = useStore((s) => s.project?.canvasBg)
 
   const rootRef = useRef<HTMLDivElement>(null)
   const spaceDown = useRef(false)
@@ -440,7 +441,7 @@ export function Canvas(): JSX.Element {
         position: 'absolute',
         inset: 0,
         overflow: 'hidden',
-        background: 'var(--bg)',
+        background: canvasBg ?? 'var(--bg)',
         touchAction: 'none',
       }}
     >

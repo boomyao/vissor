@@ -47,6 +47,19 @@ export const api = {
     return data.project
   },
 
+  patchProject: async (
+    id: string,
+    patch: { name?: string; canvasBg?: string },
+  ): Promise<Project> => {
+    const r = await fetch(Routes.projectPatch(id), {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(patch),
+    })
+    const data = await json<{ project: Project }>(r)
+    return data.project
+  },
+
   deleteProject: async (id: string): Promise<void> => {
     const r = await fetch(Routes.projectDelete(id), { method: 'DELETE' })
     await json(r)
