@@ -9,6 +9,7 @@ import { CommandBar } from './components/CommandBar.js'
 import { ContextDrawer } from './components/ContextDrawer.js'
 import { MiniMap } from './components/MiniMap.js'
 import { SelectionToolbar } from './components/SelectionToolbar.js'
+import { ShortcutsHelp } from './components/ShortcutsHelp.js'
 import { TopBar } from './components/TopBar.js'
 import { ChatFeed } from './components/ChatFeed.js'
 import { WelcomeHero } from './components/WelcomeHero.js'
@@ -70,6 +71,7 @@ export function App(): JSX.Element {
       <MiniMap />
       <ContextDrawer />
       <CommandBar />
+      <ShortcutsHelp />
     </div>
   )
 }

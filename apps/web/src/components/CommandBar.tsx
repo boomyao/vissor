@@ -158,6 +158,31 @@ export function CommandBar(): JSX.Element {
     if (e.key === 'Enter' && !e.shiftKey && !e.nativeEvent.isComposing) {
       e.preventDefault()
       void onSubmit()
+      return
+    }
+    // Up-arrow in an empty composer recalls the most recent user
+    // prompt from this project's chat history. Skipped if the caret
+    // is on a populated line — we don't want to eat in-word nav.
+    if (
+      e.key === 'ArrowUp' &&
+      !e.shiftKey &&
+      !e.metaKey &&
+      !e.ctrlKey &&
+      !e.nativeEvent.isComposing &&
+      text.length === 0
+    ) {
+      const lastUser = [...chat]
+        .reverse()
+        .find((m) => m.role === 'user' && m.text)
+      if (lastUser && lastUser.role === 'user') {
+        e.preventDefault()
+        setText(lastUser.text)
+        // Put the caret at the end so Enter sends straight away.
+        setTimeout(() => {
+          const el = textAreaRef.current
+          if (el) el.setSelectionRange(el.value.length, el.value.length)
+        }, 0)
+      }
     }
   }
 

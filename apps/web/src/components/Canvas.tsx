@@ -3,6 +3,7 @@ import { useStore } from '../store/store.js'
 import { CanvasTile } from './CanvasTile.js'
 import { VariantFrames } from './VariantFrames.js'
 import { api } from '../lib/api.js'
+import { fitCameraTo } from '../lib/camera.js'
 import { pushHistory } from '../lib/history.js'
 
 /**
@@ -149,6 +150,11 @@ export function Canvas(): JSX.Element {
           // Non-image selection: no-op, don't steal the keystroke silently.
           // Still consumed to match the "selection hotkey" expectation.
         }
+      } else if (e.code === 'KeyF' && !e.metaKey && !e.ctrlKey && !e.altKey) {
+        // Fit-to-content shortcut, matching the Fit button in TopBar.
+        e.preventDefault()
+        const state = useStore.getState()
+        state.setCamera(fitCameraTo(state.items))
       } else if (e.code === 'KeyT' && !e.metaKey && !e.ctrlKey && !e.altKey) {
         // Text tool — create a text tile at the centre of the current
         // viewport in world space and immediately enter edit mode.

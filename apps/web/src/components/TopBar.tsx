@@ -81,6 +81,19 @@ export function TopBar(): JSX.Element {
         >
           {exporting ? 'Exporting…' : 'Export'}
         </button>
+        <button
+          type="button"
+          style={{ padding: '2px 8px' }}
+          onClick={() => {
+            // Synthesise `?` key to share the same logic as the shortcut.
+            window.dispatchEvent(
+              new KeyboardEvent('keydown', { key: '?', bubbles: true }),
+            )
+          }}
+          title="Keyboard shortcuts (?)"
+        >
+          ?
+        </button>
       </div>
     </div>
   )
