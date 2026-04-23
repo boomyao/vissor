@@ -1,4 +1,4 @@
-import { useCallback, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import type { AspectRatio, StylePreset } from '@vissor/shared'
 import { useStore } from '../store/store.js'
 import { api } from '../lib/api.js'
@@ -39,6 +39,29 @@ export function CommandBar(): JSX.Element {
   const [stylePreset, setStylePreset] = useState<StylePreset | null>(null)
   const [aspectRatio, setAspectRatio] = useState<AspectRatio>('square')
   const fileRef = useRef<HTMLInputElement>(null)
+  const textAreaRef = useRef<HTMLTextAreaElement>(null)
+
+  // External "prefill + focus" trigger. Anyone (e.g. TileMenu's
+  // "Generate more like this") can dispatch
+  // `vissor:prefill-composer` with { text } to drop a suggested
+  // prompt into the textarea and focus it — saves the user from
+  // retyping boilerplate.
+  useEffect(() => {
+    const onPrefill = (e: Event): void => {
+      const detail = (e as CustomEvent<{ text?: string }>).detail
+      if (!detail?.text) return
+      setText(detail.text)
+      // Defer focus one tick so the new value is in the DOM.
+      setTimeout(() => {
+        const el = textAreaRef.current
+        if (!el) return
+        el.focus()
+        el.setSelectionRange(el.value.length, el.value.length)
+      }, 0)
+    }
+    window.addEventListener('vissor:prefill-composer', onPrefill)
+    return () => window.removeEventListener('vissor:prefill-composer', onPrefill)
+  }, [])
 
   const canSend = !!project && !!text.trim() && !activeTurnId
 
@@ -282,6 +305,7 @@ export function CommandBar(): JSX.Element {
       )}
 
       <textarea
+        ref={textAreaRef}
         value={text}
         onChange={(e) => setText(e.target.value)}
         onKeyDown={onKeyDown}

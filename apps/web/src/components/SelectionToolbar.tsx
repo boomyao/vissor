@@ -1,7 +1,13 @@
-import { useCallback } from 'react'
+import { useCallback, useState } from 'react'
 import { useStore } from '../store/store.js'
 import { api } from '../lib/api.js'
 import { pushHistory } from '../lib/history.js'
+import {
+  alignItems,
+  distributeItems,
+  type AlignEdge,
+  type Axis,
+} from '../lib/align.js'
 
 /**
  * A small floating toolbar that appears when two or more tiles are
@@ -64,6 +70,41 @@ export function SelectionToolbar(): JSX.Element | null {
     )
   }, [project, selectedItems])
 
+  const [alignOpen, setAlignOpen] = useState(false)
+
+  const applyMoves = useCallback(
+    (
+      moves: {
+        itemId: string
+        from: { x: number; y: number }
+        to: { x: number; y: number }
+      }[],
+    ) => {
+      if (!project || moves.length === 0) return
+      pushHistory({ kind: 'move', moves })
+      const patchItem = useStore.getState().patchItem
+      for (const m of moves) {
+        patchItem(m.itemId, { x: m.to.x, y: m.to.y })
+        void api.patchItem(project.id, m.itemId, m.to).catch(() => undefined)
+      }
+      setAlignOpen(false)
+    },
+    [project],
+  )
+
+  const onAlign = useCallback(
+    (axis: Axis, edge: AlignEdge) => {
+      applyMoves(alignItems(selectedItems, axis, edge))
+    },
+    [applyMoves, selectedItems],
+  )
+  const onDistribute = useCallback(
+    (axis: Axis) => {
+      applyMoves(distributeItems(selectedItems, axis))
+    },
+    [applyMoves, selectedItems],
+  )
+
   if (selection.size < 2) return null
 
   return (
@@ -103,6 +144,55 @@ export function SelectionToolbar(): JSX.Element | null {
           ↯ Use as reference ({attachable.length})
         </button>
       )}
+      <div style={{ position: 'relative' }}>
+        <button
+          type="button"
+          onClick={() => setAlignOpen((v) => !v)}
+          style={{ padding: '4px 12px', fontSize: 12, borderRadius: 999 }}
+          title="Align / distribute selected"
+        >
+          ▤ Align
+        </button>
+        {alignOpen && (
+          <div
+            style={{
+              position: 'absolute',
+              top: 'calc(100% + 6px)',
+              left: 0,
+              background: 'var(--bg-elev)',
+              border: '1px solid var(--border)',
+              borderRadius: 'var(--radius)',
+              boxShadow: 'var(--shadow-lg)',
+              padding: 4,
+              display: 'grid',
+              gridTemplateColumns: 'repeat(3, auto)',
+              gap: 2,
+              zIndex: 6,
+            }}
+            onMouseDown={(e) => e.stopPropagation()}
+          >
+            <AlignButton label="⇤" onClick={() => onAlign('x', 'start')} title="Align left" />
+            <AlignButton label="⇔" onClick={() => onAlign('x', 'center')} title="Center horizontally" />
+            <AlignButton label="⇥" onClick={() => onAlign('x', 'end')} title="Align right" />
+            <AlignButton label="⇞" onClick={() => onAlign('y', 'start')} title="Align top" />
+            <AlignButton label="⇕" onClick={() => onAlign('y', 'center')} title="Center vertically" />
+            <AlignButton label="⇟" onClick={() => onAlign('y', 'end')} title="Align bottom" />
+            <AlignButton
+              label="↔"
+              onClick={() => onDistribute('x')}
+              title="Distribute horizontally"
+              disabled={selectedItems.length < 3}
+            />
+            <span />
+            <AlignButton
+              label="↕"
+              onClick={() => onDistribute('y')}
+              title="Distribute vertically"
+              disabled={selectedItems.length < 3}
+            />
+          </div>
+        )}
+      </div>
       {selectedImages.length > 0 && (
         <button
           type="button"
@@ -135,5 +225,36 @@ export function SelectionToolbar(): JSX.Element | null {
         Clear
       </button>
     </div>
+  )
+}
+
+function AlignButton({
+  label,
+  onClick,
+  title,
+  disabled,
+}: {
+  label: string
+  onClick: () => void
+  title: string
+  disabled?: boolean
+}): JSX.Element {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      disabled={disabled}
+      title={title}
+      style={{
+        width: 30,
+        height: 30,
+        fontSize: 14,
+        borderRadius: 6,
+        padding: 0,
+        opacity: disabled ? 0.4 : 1,
+      }}
+    >
+      {label}
+    </button>
   )
 }

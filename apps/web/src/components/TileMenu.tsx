@@ -71,6 +71,22 @@ export function TileMenu({ item, x, y, onClose }: Props): JSX.Element {
     attach(assetId)
   }
 
+  const onGenerateMoreLikeThis = () => {
+    onClose()
+    if (!assetId) return
+    if (!attached.includes(assetId)) attach(assetId)
+    // Prefill the composer with a short prompt so the user can send
+    // immediately or tweak before sending. Match the phrasing style
+    // that codex handles well via the design-agent system prompt.
+    window.dispatchEvent(
+      new CustomEvent('vissor:prefill-composer', {
+        detail: {
+          text: 'More variations of this — keep the subject and composition, vary the lighting and palette.',
+        },
+      }),
+    )
+  }
+
   const onDelete = async () => {
     onClose()
     if (!project) return
@@ -136,6 +152,11 @@ export function TileMenu({ item, x, y, onClose }: Props): JSX.Element {
         }
         onClick={onUseAsReference}
         disabled={!assetId || (!!assetId && attached.includes(assetId))}
+      />
+      <MenuItem
+        label="Generate more like this"
+        onClick={onGenerateMoreLikeThis}
+        disabled={!assetId}
       />
       <MenuItem label="Bring to front" onClick={onBringToFront} />
       <MenuItem label="Send to back" onClick={onSendToBack} />

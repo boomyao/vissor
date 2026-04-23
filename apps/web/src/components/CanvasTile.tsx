@@ -258,7 +258,7 @@ export function CanvasTile({ item }: Props): JSX.Element {
           Group {item.label ? `· ${item.label}` : ''}
         </div>
       )}
-      {selected && item.kind === 'image' && (
+      {selected && (item.kind === 'image' || item.kind === 'text') && (
         <ResizeHandles item={item} />
       )}
       {selected && item.kind === 'text' && !editingText && (
@@ -277,7 +277,8 @@ export function CanvasTile({ item }: Props): JSX.Element {
 }
 
 interface ResizeHandlesProps {
-  item: Extract<CanvasItem, { kind: 'image' }>
+  /** Any canvas item with x/y/w/h — images, text tiles, future types. */
+  item: CanvasItem
 }
 
 const HANDLE_CORNERS = ['tl', 'tr', 'bl', 'br'] as const
