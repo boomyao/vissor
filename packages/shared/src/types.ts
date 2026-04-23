@@ -61,6 +61,10 @@ export interface CanvasImage extends CanvasItemBase {
 export interface CanvasText extends CanvasItemBase {
   kind: 'text'
   text: string
+  /** Font size in world-space pixels. Optional; defaults to 16. */
+  fontSize?: number
+  /** CSS color string. Optional; defaults to the theme foreground. */
+  color?: string
 }
 
 export interface CanvasGroup extends CanvasItemBase {

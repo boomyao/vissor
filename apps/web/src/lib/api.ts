@@ -52,6 +52,12 @@ export const api = {
     await json(r)
   },
 
+  duplicateProject: async (id: string): Promise<Project> => {
+    const r = await fetch(Routes.projectDuplicate(id), { method: 'POST' })
+    const data = await json<{ project: Project }>(r)
+    return data.project
+  },
+
   getProject: async (id: string): Promise<GetProjectResponse> => {
     const r = await fetch(Routes.projectGet(id))
     return json<GetProjectResponse>(r)
@@ -135,7 +141,16 @@ export const api = {
   patchItem: async (
     projectId: string,
     itemId: string,
-    patch: { x?: number; y?: number; w?: number; h?: number; z?: number },
+    patch: {
+      x?: number
+      y?: number
+      w?: number
+      h?: number
+      z?: number
+      text?: string
+      fontSize?: number
+      color?: string
+    },
   ): Promise<void> => {
     const r = await fetch(Routes.itemPatch(projectId, itemId), {
       method: 'PATCH',

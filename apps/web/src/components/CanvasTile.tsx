@@ -208,9 +208,9 @@ export function CanvasTile({ item }: Props): JSX.Element {
         <div
           style={{
             padding: 16,
-            color: item.text ? 'var(--fg)' : 'var(--fg-dim)',
-            fontSize: 14,
-            lineHeight: 1.5,
+            color: item.text ? (item.color ?? 'var(--fg)') : 'var(--fg-dim)',
+            fontSize: item.fontSize ?? 16,
+            lineHeight: 1.35,
             whiteSpace: 'pre-wrap',
             fontStyle: item.text ? 'normal' : 'italic',
             height: '100%',
@@ -238,9 +238,9 @@ export function CanvasTile({ item }: Props): JSX.Element {
             boxSizing: 'border-box',
             border: 'none',
             background: 'transparent',
-            color: 'var(--fg)',
-            fontSize: 14,
-            lineHeight: 1.5,
+            color: item.color ?? 'var(--fg)',
+            fontSize: item.fontSize ?? 16,
+            lineHeight: 1.35,
             resize: 'none',
             outline: 'none',
             fontFamily: 'inherit',
@@ -261,6 +261,9 @@ export function CanvasTile({ item }: Props): JSX.Element {
       {selected && item.kind === 'image' && (
         <ResizeHandles item={item} />
       )}
+      {selected && item.kind === 'text' && !editingText && (
+        <TextStyleToolbar item={item} />
+      )}
       {menuPos && (
         <TileMenu
           item={item}
@@ -279,6 +282,125 @@ interface ResizeHandlesProps {
 
 const HANDLE_CORNERS = ['tl', 'tr', 'bl', 'br'] as const
 type Corner = (typeof HANDLE_CORNERS)[number]
+
+const TEXT_SIZE_PRESETS: { label: string; value: number }[] = [
+  { label: 'S', value: 12 },
+  { label: 'M', value: 16 },
+  { label: 'L', value: 24 },
+  { label: 'XL', value: 40 },
+]
+const TEXT_COLOR_PRESETS: string[] = [
+  '#1E1E1E', // near-black, theme fg
+  '#FFFFFF', // white (on dark bg)
+  '#0D99FF', // accent blue
+  '#E03E3E', // red
+  '#10A97C', // green
+  '#9B51E0', // purple
+]
+
+/**
+ * Inline toolbar pinned just above a selected text tile. Lets the
+ * user pick a size preset or colour swatch without opening a modal.
+ * Rendered inside the tile's transformed container, so it scales
+ * with the camera — we compensate by dividing offsets by
+ * camera.scale so hit targets stay clickable.
+ */
+function TextStyleToolbar({
+  item,
+}: {
+  item: Extract<CanvasItem, { kind: 'text' }>
+}): JSX.Element {
+  const project = useStore((s) => s.project)
+  const patchItemLocal = useStore((s) => s.patchItem)
+  const cameraScale = useStore((s) => s.camera.scale)
+
+  const apply = (patch: Partial<CanvasItem>): void => {
+    patchItemLocal(item.id, patch)
+    if (project) {
+      void api
+        .patchItem(project.id, item.id, patch as {
+          fontSize?: number
+          color?: string
+        })
+        .catch(() => undefined)
+    }
+  }
+
+  // Counter-scale so the toolbar stays at a constant screen size
+  // regardless of zoom. Without this it shrinks to invisibility at
+  // 20% zoom and overwhelms the tile at 400% zoom.
+  const scale = 1 / cameraScale
+
+  return (
+    <div
+      onPointerDown={(e) => e.stopPropagation()}
+      onMouseDown={(e) => e.stopPropagation()}
+      onDoubleClick={(e) => e.stopPropagation()}
+      style={{
+        position: 'absolute',
+        top: 0,
+        left: 0,
+        transform: `translate(0, -${40 * scale + 4}px) scale(${scale})`,
+        transformOrigin: 'top left',
+        display: 'flex',
+        gap: 2,
+        padding: 4,
+        background: 'var(--bg-elev)',
+        border: '1px solid var(--border)',
+        borderRadius: 'var(--radius)',
+        boxShadow: 'var(--shadow-lg)',
+        zIndex: 6,
+        whiteSpace: 'nowrap',
+      }}
+    >
+      {TEXT_SIZE_PRESETS.map((p) => {
+        const active = (item.fontSize ?? 16) === p.value
+        return (
+          <button
+            key={p.value}
+            type="button"
+            onClick={() => apply({ fontSize: p.value })}
+            style={{
+              padding: '4px 8px',
+              fontSize: 12,
+              background: active ? 'var(--bg-elev-2)' : 'transparent',
+              color: 'var(--fg)',
+              border: 'none',
+              borderRadius: 4,
+              cursor: 'pointer',
+            }}
+            title={`Size ${p.value}px`}
+          >
+            {p.label}
+          </button>
+        )
+      })}
+      <span style={{ width: 1, background: 'var(--border)', margin: '2px 4px' }} />
+      {TEXT_COLOR_PRESETS.map((c) => {
+        const active = (item.color ?? '#1E1E1E').toLowerCase() === c.toLowerCase()
+        return (
+          <button
+            key={c}
+            type="button"
+            onClick={() => apply({ color: c })}
+            style={{
+              width: 20,
+              height: 20,
+              padding: 0,
+              background: c,
+              border: active
+                ? '2px solid var(--accent)'
+                : '1px solid var(--border)',
+              borderRadius: '50%',
+              cursor: 'pointer',
+            }}
+            title={c}
+          />
+        )
+      })}
+    </div>
+  )
+}
 
 function ResizeHandles({ item }: ResizeHandlesProps): JSX.Element {
   const cameraScale = useStore((s) => s.camera.scale)

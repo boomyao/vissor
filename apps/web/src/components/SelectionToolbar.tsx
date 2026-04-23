@@ -1,29 +1,38 @@
 import { useCallback } from 'react'
 import { useStore } from '../store/store.js'
 import { api } from '../lib/api.js'
+import { pushHistory } from '../lib/history.js'
 
 /**
  * A small floating toolbar that appears when two or more tiles are
  * selected. Exposes bulk operations that don't make sense for a
- * single tile (where the right-click menu is enough).
- *
- * Currently: batch download + clear selection. More ("group", "lock"
- * …) can land here later.
+ * single tile (where the right-click menu is enough):
+ *   - Use as reference (attach every selected image to the command bar)
+ *   - Download (N PNGs)
+ *   - Delete (with undo)
+ *   - Clear selection
  */
 export function SelectionToolbar(): JSX.Element | null {
   const selection = useStore((s) => s.selection)
   const items = useStore((s) => s.items)
+  const attachedAssetIds = useStore((s) => s.attachedAssetIds)
+  const attachAsset = useStore((s) => s.attachAsset)
   const clearSelection = useStore((s) => s.clearSelection)
+  const project = useStore((s) => s.project)
 
-  const selectedImages = [...selection]
+  const selectedItems = [...selection]
     .map((id) => items.find((i) => i.id === id))
-    .filter((i): i is NonNullable<typeof i> => !!i && i.kind === 'image')
+    .filter((i): i is NonNullable<typeof i> => !!i)
+  const selectedImages = selectedItems.filter(
+    (i): i is Extract<typeof i, { kind: 'image' }> => i.kind === 'image',
+  )
+  const attachable = selectedImages.filter(
+    (i) => !attachedAssetIds.includes(i.assetId),
+  )
 
   const onDownloadAll = useCallback(() => {
     for (const item of selectedImages) {
-      if (item.kind !== 'image') continue
-      // Trigger each download via a synthetic anchor. Spacing them out
-      // slightly avoids some browsers' "multiple downloads" prompt.
+      // Trigger each download via a synthetic anchor.
       const a = document.createElement('a')
       a.href = api.fileUrl(item.assetId)
       a.download = `vissor-${item.assetId.slice(0, 8)}.png`
@@ -33,6 +42,27 @@ export function SelectionToolbar(): JSX.Element | null {
       a.remove()
     }
   }, [selectedImages])
+
+  const onAttachAll = useCallback(() => {
+    for (const item of attachable) attachAsset(item.assetId)
+    clearSelection()
+  }, [attachable, attachAsset, clearSelection])
+
+  const onDeleteAll = useCallback(async () => {
+    if (!project || selectedItems.length === 0) return
+    // Push a single history entry so one Cmd-Z restores everything.
+    pushHistory({ kind: 'delete', items: selectedItems })
+    const ids = new Set(selectedItems.map((i) => i.id))
+    useStore.setState((s) => ({
+      items: s.items.filter((i) => !ids.has(i.id)),
+      selection: new Set(),
+    }))
+    await Promise.all(
+      selectedItems.map((i) =>
+        api.deleteItem(project.id, i.id).catch(() => undefined),
+      ),
+    )
+  }, [project, selectedItems])
 
   if (selection.size < 2) return null
 
@@ -63,15 +93,21 @@ export function SelectionToolbar(): JSX.Element | null {
       >
         {selection.size} selected
       </span>
+      {attachable.length > 0 && (
+        <button
+          type="button"
+          onClick={onAttachAll}
+          style={{ padding: '4px 12px', fontSize: 12, borderRadius: 999 }}
+          title="Attach all as references to the next prompt"
+        >
+          ↯ Use as reference ({attachable.length})
+        </button>
+      )}
       {selectedImages.length > 0 && (
         <button
           type="button"
           onClick={onDownloadAll}
-          style={{
-            padding: '4px 12px',
-            fontSize: 12,
-            borderRadius: 999,
-          }}
+          style={{ padding: '4px 12px', fontSize: 12, borderRadius: 999 }}
           title="Download all selected"
         >
           ↓ Download ({selectedImages.length})
@@ -79,13 +115,22 @@ export function SelectionToolbar(): JSX.Element | null {
       )}
       <button
         type="button"
-        onClick={clearSelection}
-        title="Clear selection (Esc)"
+        onClick={() => void onDeleteAll()}
         style={{
-          padding: '4px 10px',
+          padding: '4px 12px',
           fontSize: 12,
           borderRadius: 999,
+          color: 'var(--danger)',
         }}
+        title="Delete all selected (Cmd-Z to undo)"
+      >
+        ✕ Delete ({selectedItems.length})
+      </button>
+      <button
+        type="button"
+        onClick={clearSelection}
+        title="Clear selection (Esc)"
+        style={{ padding: '4px 10px', fontSize: 12, borderRadius: 999 }}
       >
         Clear
       </button>

@@ -113,6 +113,7 @@ export const Routes = {
   projectGet: (id: string) => `/api/projects/${id}`,
   projectPatch: (id: string) => `/api/projects/${id}`,
   projectDelete: (id: string) => `/api/projects/${id}`,
+  projectDuplicate: (id: string) => `/api/projects/${id}/duplicate`,
   projectStream: (id: string) => `/api/projects/${id}/stream`,
   chatSend: '/api/chat',
   chatCancel: '/api/chat/cancel',

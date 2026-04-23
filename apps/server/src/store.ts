@@ -124,6 +124,39 @@ export async function getProject(id: string): Promise<Project | null> {
   return readJson<Project>(projectMetaPath(id))
 }
 
+/**
+ * Clone a project's canvas into a new project. Items are copied
+ * with fresh ids (so moves/deletes on the copy don't touch the
+ * source) and the asset index is copied verbatim — asset BLOBS are
+ * content-addressed, so the clone just points at the same files. Chat
+ * history and codex session id are NOT copied: a clone is a fresh
+ * board to iterate on, not a continuation of the source's
+ * conversation.
+ */
+export async function duplicateProject(
+  sourceId: string,
+): Promise<Project | null> {
+  const source = await getProject(sourceId)
+  if (!source) return null
+  const copy = await createProject(`${source.name} (copy)`)
+  // Copy the assets index as-is; asset files are deduped globally.
+  const assetsIndex = await readAssetsIndex(sourceId)
+  await writeJson(projectAssetsIndexPath(copy.id), assetsIndex as unknown as Json)
+  // Re-materialise items with new ids, same layout.
+  const items = await readItems(sourceId)
+  const idMap = new Map<string, string>()
+  for (const item of items) idMap.set(item.id, randomUUID())
+  for (const item of items) {
+    const next: CanvasItem = { ...item, id: idMap.get(item.id)! }
+    // CanvasGroup points at childIds — remap to the new ids.
+    if (next.kind === 'group') {
+      next.childIds = next.childIds.map((id) => idMap.get(id) ?? id)
+    }
+    await appendItemOp(copy.id, { op: 'add', item: next })
+  }
+  return copy
+}
+
 export async function updateProject(
   id: string,
   patch: Partial<Project>,

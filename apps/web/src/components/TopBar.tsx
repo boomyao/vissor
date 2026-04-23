@@ -1,5 +1,7 @@
+import { useState } from 'react'
 import { useStore } from '../store/store.js'
 import { fitCameraTo } from '../lib/camera.js'
+import { exportProjectAsZip } from '../lib/exportProject.js'
 import { ProjectSwitcher } from './ProjectSwitcher.js'
 
 /**
@@ -11,6 +13,22 @@ export function TopBar(): JSX.Element {
   const scale = useStore((s) => s.camera.scale)
   const setCamera = useStore((s) => s.setCamera)
   const items = useStore((s) => s.items)
+  const project = useStore((s) => s.project)
+  const assets = useStore((s) => s.assets)
+  const [exporting, setExporting] = useState(false)
+
+  const onExport = async (): Promise<void> => {
+    if (!project || exporting) return
+    setExporting(true)
+    try {
+      await exportProjectAsZip(project, items, assets)
+    } catch (err) {
+      // eslint-disable-next-line no-console
+      console.warn('export failed', err)
+    } finally {
+      setExporting(false)
+    }
+  }
 
   return (
     <div
@@ -53,6 +71,15 @@ export function TopBar(): JSX.Element {
           title="Fit to content"
         >
           Fit
+        </button>
+        <button
+          type="button"
+          style={{ padding: '2px 8px' }}
+          onClick={() => void onExport()}
+          disabled={!project || items.length === 0 || exporting}
+          title="Download project as ZIP (images + manifest)"
+        >
+          {exporting ? 'Exporting…' : 'Export'}
         </button>
       </div>
     </div>

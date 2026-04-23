@@ -23,6 +23,19 @@ export async function createAndSwitch(name?: string): Promise<void> {
   await switchProject(project.id)
 }
 
+/**
+ * Clone the current project into a fresh copy, refresh the list, and
+ * switch to the new copy. Items land with the same layout; chat
+ * history and codex session start fresh so the user can branch off.
+ */
+export async function duplicateCurrent(): Promise<void> {
+  const current = useStore.getState().project
+  if (!current) return
+  const copy = await api.duplicateProject(current.id)
+  await refreshProjects()
+  await switchProject(copy.id)
+}
+
 /** Rename the project and refresh the list. */
 export async function renameCurrent(name: string): Promise<void> {
   const current = useStore.getState().project

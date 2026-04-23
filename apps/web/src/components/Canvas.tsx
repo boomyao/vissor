@@ -149,6 +149,34 @@ export function Canvas(): JSX.Element {
           // Non-image selection: no-op, don't steal the keystroke silently.
           // Still consumed to match the "selection hotkey" expectation.
         }
+      } else if (e.code === 'KeyT' && !e.metaKey && !e.ctrlKey && !e.altKey) {
+        // Text tool — create a text tile at the centre of the current
+        // viewport in world space and immediately enter edit mode.
+        e.preventDefault()
+        const { project, camera } = useStore.getState()
+        if (!project) return
+        const vw = window.innerWidth
+        const vh = window.innerHeight
+        const worldX = (vw / 2 - camera.x) / camera.scale - 120
+        const worldY = (vh / 2 - camera.y) / camera.scale - 20
+        void (async () => {
+          try {
+            const { item } = await api.placeText(
+              project.id,
+              worldX,
+              worldY,
+              '',
+            )
+            window.dispatchEvent(
+              new CustomEvent('vissor:edit-text', {
+                detail: { itemId: item.id },
+              }),
+            )
+          } catch (err) {
+            // eslint-disable-next-line no-console
+            console.warn('placeText (T key) failed', err)
+          }
+        })()
       }
     }
     const up = (e: KeyboardEvent) => {

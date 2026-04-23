@@ -3,6 +3,7 @@ import { useStore } from '../store/store.js'
 import {
   createAndSwitch,
   deleteCurrent,
+  duplicateCurrent,
   renameCurrent,
   switchProject,
 } from '../lib/projectOps.js'
@@ -56,6 +57,17 @@ export function ProjectSwitcher(): JSX.Element {
     const next = prompt('Project name', current.name)?.trim()
     if (!next || next === current.name) return
     await renameCurrent(next)
+  }, [current])
+
+  const onDuplicate = useCallback(async () => {
+    setOpen(false)
+    if (!current) return
+    try {
+      await duplicateCurrent()
+    } catch (err) {
+      // eslint-disable-next-line no-alert
+      alert(`Failed to duplicate project: ${err}`)
+    }
   }, [current])
 
   const onDelete = useCallback(async () => {
@@ -160,6 +172,11 @@ export function ProjectSwitcher(): JSX.Element {
             }}
           >
             <MenuItem onSelect={onNew} label="+ New project" />
+            <MenuItem
+              onSelect={onDuplicate}
+              label="Duplicate current"
+              disabled={!current}
+            />
             <MenuItem onSelect={onRename} label="Rename current…" disabled={!current} />
             <MenuItem
               onSelect={onDelete}

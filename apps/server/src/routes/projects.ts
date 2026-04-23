@@ -14,6 +14,7 @@ import {
   appendItemOp,
   createProject,
   deleteProject,
+  duplicateProject,
   getProject,
   getSnapshot,
   listProjects,
@@ -68,6 +69,15 @@ export async function projectsRoutes(app: FastifyInstance): Promise<void> {
       const ok = await deleteProject(req.params.id)
       if (!ok) return reply.code(500).send({ error: 'delete_failed' })
       return { ok: true }
+    },
+  )
+
+  app.post<{ Params: { id: string } }>(
+    '/api/projects/:id/duplicate',
+    async (req, reply) => {
+      const copy = await duplicateProject(req.params.id)
+      if (!copy) return reply.code(404).send({ error: 'not_found' })
+      return { project: copy }
     },
   )
 
@@ -177,7 +187,7 @@ export async function projectsRoutes(app: FastifyInstance): Promise<void> {
     },
   )
 
-  // Patch a single item (canvas move/resize/rename text).
+  // Patch a single item (canvas move/resize/rename text/restyle text).
   app.patch<{
     Params: { id: string; itemId: string }
     Body: {
@@ -187,6 +197,8 @@ export async function projectsRoutes(app: FastifyInstance): Promise<void> {
       h?: number
       z?: number
       text?: string
+      fontSize?: number
+      color?: string
     }
   }>('/api/projects/:id/items/:itemId', async (req, reply) => {
     const { id, itemId } = req.params
