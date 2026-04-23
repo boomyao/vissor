@@ -1,0 +1,19 @@
+node_modules
+dist
+build
+.DS_Store
+*.log
+.env
+.env.*
+!.env.example
+bun.lockb
+.vite
+.turbo
+coverage
+
+# Local workspace data
+.vissor
+
+# Codex scratch / generated output dirs
+output
+tmp
