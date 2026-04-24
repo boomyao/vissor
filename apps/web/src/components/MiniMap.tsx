@@ -6,12 +6,13 @@ const MAP_H = 120
 const MAP_PAD = 20 // world-space padding around content bounds
 
 /**
- * Small bottom-right overview of the whole project. Shows every
- * canvas item as a tiny rectangle and overlays the current viewport.
+ * Overview of the whole project. Shows every canvas item as a tiny
+ * rectangle and overlays the current viewport.
  *
  * Click anywhere on the map to recentre the camera on that world
  * point (viewport width/height are preserved). Hidden when the
- * canvas is empty — it would just be a blank box.
+ * canvas is empty — it would just be a blank box. Rendered inline
+ * so the caller positions it (e.g. inside a popover).
  */
 export function MiniMap(): JSX.Element | null {
   const items = useStore((s) => s.items)
@@ -98,17 +99,13 @@ export function MiniMap(): JSX.Element | null {
     <div
       onClick={onClick}
       style={{
-        position: 'absolute',
-        right: 12,
-        bottom: 120,
+        position: 'relative',
         width: MAP_W,
         height: MAP_H,
-        background: 'var(--bg-elev)',
-        border: '1px solid var(--border)',
+        background: 'var(--paper-cool)',
+        border: '1px solid var(--line-soft)',
         borderRadius: 'var(--radius)',
         overflow: 'hidden',
-        boxShadow: 'var(--shadow-lg)',
-        zIndex: 4,
         cursor: 'pointer',
       }}
       title="Mini-map — click to recentre"
@@ -127,10 +124,10 @@ export function MiniMap(): JSX.Element | null {
               height: Math.max(2, item.h * scale),
               background:
                 item.kind === 'image'
-                  ? 'var(--accent)'
-                  : 'var(--fg-dim)',
+                  ? 'var(--ink)'
+                  : 'var(--ink-dim)',
               borderRadius: 1,
-              opacity: 0.7,
+              opacity: 0.6,
             }}
           />
         )
@@ -147,7 +144,7 @@ export function MiniMap(): JSX.Element | null {
               width: Math.max(2, viewW * scale),
               height: Math.max(2, viewH * scale),
               border: '1px solid var(--accent)',
-              background: 'rgba(13, 153, 255, 0.08)',
+              background: 'oklch(0.7 0.19 50 / 0.1)',
               pointerEvents: 'none',
             }}
           />

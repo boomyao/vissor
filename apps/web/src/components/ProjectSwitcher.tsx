@@ -86,13 +86,16 @@ export function ProjectSwitcher(): JSX.Element {
         style={{
           display: 'flex',
           alignItems: 'center',
-          gap: 8,
-          padding: '6px 10px 6px 12px',
-          borderRadius: 'var(--radius)',
-          background: 'var(--bg-elev)',
-          border: '1px solid var(--border)',
+          gap: 6,
+          padding: '2px 4px',
+          borderRadius: 4,
+          background: 'transparent',
+          border: 'none',
+          color: 'var(--ink)',
           fontSize: 13,
+          fontWeight: 500,
           maxWidth: 280,
+          cursor: 'pointer',
         }}
       >
         <span
@@ -102,9 +105,9 @@ export function ProjectSwitcher(): JSX.Element {
             whiteSpace: 'nowrap',
           }}
         >
-          {current?.name ?? 'Vissor'}
+          {current?.name ?? 'Untitled project'}
         </span>
-        <span style={{ color: 'var(--fg-dim)', fontSize: 10 }}>▾</span>
+        <span style={{ color: 'var(--ink-dim)', fontSize: 10 }}>▾</span>
       </button>
 
       {open && (

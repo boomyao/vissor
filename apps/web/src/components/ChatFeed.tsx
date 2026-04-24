@@ -40,22 +40,36 @@ export function ChatFeed(): JSX.Element | null {
         style={{
           position: 'absolute',
           bottom: 120,
-          left: 12,
-          background: 'var(--bg-elev)',
-          border: '1px solid var(--border)',
+          right: 12,
+          background: 'var(--card)',
+          border: '1px solid var(--line)',
           borderRadius: 999,
-          padding: '6px 12px',
-          fontSize: 12,
-          color: 'var(--fg-dim)',
-          boxShadow: 'var(--shadow-lg)',
+          padding: '6px 14px',
+          fontFamily: 'var(--font-mono)',
+          fontSize: 10,
+          letterSpacing: 1.5,
+          textTransform: 'uppercase',
+          color: 'var(--ink-dim)',
+          boxShadow: 'var(--shadow-sm)',
           zIndex: 3,
           display: 'flex',
           alignItems: 'center',
           gap: 8,
         }}
       >
-        {agentStreaming && <span className="vissor-pulse">●</span>}
-        Chat · {chat.length}
+        {agentStreaming && (
+          <span
+            className="vissor-pulse"
+            style={{
+              width: 6,
+              height: 6,
+              borderRadius: '50%',
+              background: 'var(--accent)',
+              display: 'inline-block',
+            }}
+          />
+        )}
+        Conversation · {chat.length}
       </button>
     )
   }
@@ -65,16 +79,18 @@ export function ChatFeed(): JSX.Element | null {
       style={{
         position: 'absolute',
         bottom: 120,
-        left: 12,
+        right: 12,
         width: 320,
         maxHeight: 'calc(100vh - 220px)',
-        background: 'var(--bg-elev)',
-        border: '1px solid var(--border)',
+        background: 'var(--card)',
+        border: '1px solid var(--line)',
         borderRadius: 'var(--radius-lg)',
         display: 'flex',
         flexDirection: 'column',
         boxShadow: 'var(--shadow-lg)',
         zIndex: 3,
+        fontFamily: 'var(--font-sans)',
+        overflow: 'hidden',
       }}
     >
       <header
@@ -82,19 +98,39 @@ export function ChatFeed(): JSX.Element | null {
           display: 'flex',
           alignItems: 'center',
           justifyContent: 'space-between',
-          padding: '8px 12px',
-          borderBottom: '1px solid var(--border)',
+          padding: '10px 14px',
+          borderBottom: '1px solid var(--line-soft)',
         }}
       >
-        <span style={{ fontSize: 12, color: 'var(--fg-dim)' }}>
-          {agentStreaming && <span className="vissor-pulse">● </span>}
-          Conversation
+        <span
+          className="vissor-meta"
+          style={{ display: 'flex', alignItems: 'center', gap: 6 }}
+        >
+          {agentStreaming && (
+            <span
+              className="vissor-pulse"
+              style={{
+                width: 6,
+                height: 6,
+                borderRadius: '50%',
+                background: 'var(--accent)',
+                display: 'inline-block',
+              }}
+            />
+          )}
+          Conversation · {chat.length}
         </span>
         <button
           type="button"
           onClick={() => setCollapsed(true)}
           title="Hide"
-          style={{ padding: '2px 6px', fontSize: 11 }}
+          style={{
+            padding: '2px 6px',
+            fontSize: 12,
+            color: 'var(--ink-faint)',
+            background: 'transparent',
+            border: 'none',
+          }}
         >
           ─
         </button>
@@ -118,26 +154,35 @@ export function ChatFeed(): JSX.Element | null {
               display: 'flex',
               flexDirection: 'column',
               gap: 4,
-              padding: 8,
+              padding: 10,
               borderRadius: 'var(--radius)',
               background:
-                m.role === 'user' ? 'var(--bg-elev-2)' : 'transparent',
-              border: m.role === 'agent' ? '1px solid var(--border)' : 'none',
+                m.role === 'user' ? 'var(--paper-warm)' : 'transparent',
+              border: m.role === 'agent' ? '1px solid var(--line-soft)' : 'none',
             }}
           >
             <div
+              className="vissor-meta"
               style={{
-                fontSize: 11,
-                color: 'var(--fg-dim)',
+                marginBottom: 2,
                 display: 'flex',
                 alignItems: 'center',
                 gap: 6,
+                fontSize: 9,
               }}
             >
               <span>{m.role === 'user' ? 'You' : 'Agent'}</span>
               {m.role === 'agent' && m.status === 'streaming' && (
-                <span style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
-                  · <span className="vissor-pulse">{m.statusLine ?? 'Thinking'}…</span>
+                <span
+                  className="vissor-pulse"
+                  style={{
+                    color: 'var(--accent)',
+                    fontFamily: 'var(--font-mono)',
+                    textTransform: 'none',
+                    letterSpacing: 0,
+                  }}
+                >
+                  ● {m.statusLine ?? 'Thinking'}…
                 </span>
               )}
               {m.role === 'agent' && m.status === 'failed' && (
@@ -156,7 +201,7 @@ export function ChatFeed(): JSX.Element | null {
                       height: 36,
                       borderRadius: 6,
                       objectFit: 'cover',
-                      border: '1px solid var(--border)',
+                      border: '1px solid var(--line)',
                     }}
                   />
                 ))}
@@ -165,7 +210,8 @@ export function ChatFeed(): JSX.Element | null {
             <div
               style={{
                 fontSize: 13,
-                color: 'var(--fg)',
+                color: 'var(--ink)',
+                lineHeight: 1.4,
                 whiteSpace: 'pre-wrap',
                 wordBreak: 'break-word',
               }}

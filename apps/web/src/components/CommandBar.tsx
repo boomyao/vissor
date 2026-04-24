@@ -211,31 +211,45 @@ export function CommandBar(): JSX.Element {
         bottom: 24,
         left: '50%',
         transform: 'translateX(-50%)',
-        width: 'min(880px, calc(100vw - 64px))',
-        background: 'var(--bg-elev)',
-        border: '1px solid var(--border)',
-        borderRadius: 'var(--radius-lg)',
-        padding: 12,
+        width: 'min(820px, calc(100vw - 64px))',
+        background: 'var(--card)',
+        border: '1px solid var(--line)',
+        borderRadius: 'var(--radius-xl)',
+        padding: 14,
         boxShadow: 'var(--shadow-lg)',
         display: 'flex',
         flexDirection: 'column',
         gap: 10,
         zIndex: 10,
+        fontFamily: 'var(--font-sans)',
       }}
     >
       {statusPill && (
         <div
           style={{
             alignSelf: 'flex-start',
+            display: 'flex',
+            alignItems: 'center',
+            gap: 8,
             fontSize: 12,
-            color: 'var(--fg-dim)',
-            background: 'var(--bg-elev-2)',
+            color: 'var(--accent-ink)',
+            background: 'var(--accent-soft)',
             borderRadius: 999,
-            padding: '4px 10px',
-            border: '1px solid var(--border)',
+            padding: '4px 12px',
+            border: '1px solid var(--accent)',
           }}
         >
-          ● {statusPill}
+          <span
+            className="vissor-pulse"
+            style={{
+              width: 6,
+              height: 6,
+              borderRadius: '50%',
+              background: 'var(--accent)',
+              display: 'inline-block',
+            }}
+          />
+          {statusPill}
         </div>
       )}
 
@@ -245,13 +259,13 @@ export function CommandBar(): JSX.Element {
             alignSelf: 'flex-start',
             display: 'flex',
             alignItems: 'center',
-            gap: 6,
+            gap: 8,
             fontSize: 12,
-            color: 'var(--accent-2)',
-            background: 'rgba(13, 153, 255, 0.08)',
-            border: '1px solid rgba(13, 153, 255, 0.4)',
+            color: 'var(--accent-ink)',
+            background: 'var(--accent-soft)',
+            border: '1px solid var(--accent)',
             borderRadius: 999,
-            padding: '3px 10px 3px 4px',
+            padding: '3px 12px 3px 4px',
           }}
         >
           {selectedImageAssetIds.slice(0, 3).map((id) => (
@@ -334,16 +348,18 @@ export function CommandBar(): JSX.Element {
         value={text}
         onChange={(e) => setText(e.target.value)}
         onKeyDown={onKeyDown}
-        placeholder="Describe what you want to create…  (Enter to send, Shift+Enter for newline)"
+        placeholder="Describe what you want to create…"
         rows={2}
         style={{
           resize: 'none',
           width: '100%',
           background: 'transparent',
-          color: 'var(--fg)',
-          fontSize: 14,
+          color: 'var(--ink)',
+          fontFamily: 'var(--font-sans)',
+          fontSize: 15,
           lineHeight: 1.5,
-          padding: 4,
+          padding: '4px 2px',
+          minHeight: 46,
         }}
       />
 
@@ -354,7 +370,7 @@ export function CommandBar(): JSX.Element {
           alignItems: 'center',
         }}
       >
-        <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+        <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
           <input
             ref={fileRef}
             type="file"
@@ -366,50 +382,110 @@ export function CommandBar(): JSX.Element {
               if (fileRef.current) fileRef.current.value = ''
             }}
           />
-          <button
-            type="button"
+          <Chip
             onClick={() => fileRef.current?.click()}
             disabled={busyUpload || !project}
             title="Attach reference image"
           >
-            {busyUpload ? 'Uploading…' : '+ Image'}
-          </button>
+            {busyUpload ? 'Uploading…' : '＋ Image'}
+          </Chip>
           <VariantCountPicker value={variantCount} onChange={setVariantCount} />
           <StylePicker value={stylePreset} onChange={setStylePreset} />
           <AspectPicker value={aspectRatio} onChange={setAspectRatio} />
         </div>
-        {activeTurnId ? (
-          <button
-            type="button"
-            onClick={() => void onCancel()}
-            style={{
-              background: 'var(--bg-elev)',
-              borderColor: 'var(--border-strong)',
-              color: 'var(--fg)',
-              fontWeight: 600,
-              padding: '8px 18px',
-            }}
-            title="Cancel this turn"
-          >
-            Cancel
-          </button>
-        ) : (
-          <button
-            type="submit"
-            disabled={!canSend}
-            style={{
-              background: canSend ? 'var(--accent)' : undefined,
-              borderColor: canSend ? 'var(--accent)' : undefined,
-              color: canSend ? 'white' : undefined,
-              fontWeight: 600,
-              padding: '8px 18px',
-            }}
-          >
-            Send
-          </button>
-        )}
+        <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+          {!activeTurnId && (
+            <span
+              className="vissor-meta"
+              style={{ letterSpacing: 1, marginRight: 2 }}
+            >
+              ⏎ Send
+            </span>
+          )}
+          {activeTurnId ? (
+            <button
+              type="button"
+              onClick={() => void onCancel()}
+              style={{
+                height: 36,
+                padding: '0 22px',
+                background: 'var(--card)',
+                border: '1px solid var(--ink)',
+                borderRadius: 'var(--radius)',
+                color: 'var(--ink)',
+                fontFamily: 'var(--font-sans)',
+                fontSize: 13,
+                fontWeight: 500,
+              }}
+              title="Cancel this turn"
+            >
+              Cancel
+            </button>
+          ) : (
+            <button
+              type="submit"
+              disabled={!canSend}
+              style={{
+                height: 36,
+                padding: '0 22px',
+                background: canSend ? 'var(--ink)' : 'var(--paper-warm)',
+                border: `1px solid ${canSend ? 'var(--ink)' : 'var(--line)'}`,
+                borderRadius: 'var(--radius)',
+                color: canSend ? 'var(--paper)' : 'var(--ink-faint)',
+                fontFamily: 'var(--font-sans)',
+                fontSize: 13,
+                fontWeight: 500,
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: 6,
+              }}
+            >
+              Generate <span style={{ opacity: 0.6 }}>↗</span>
+            </button>
+          )}
+        </div>
       </div>
     </form>
+  )
+}
+
+function Chip({
+  children,
+  onClick,
+  disabled,
+  active,
+  title,
+}: {
+  children: React.ReactNode
+  onClick?: () => void
+  disabled?: boolean
+  active?: boolean
+  title?: string
+}): JSX.Element {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      disabled={disabled}
+      title={title}
+      style={{
+        height: 28,
+        padding: '0 10px',
+        fontFamily: 'var(--font-sans)',
+        fontSize: 12,
+        background: active ? 'var(--paper-warm)' : 'transparent',
+        color: active ? 'var(--ink)' : 'var(--ink-dim)',
+        border: `1px solid ${active ? 'var(--ink)' : 'var(--line)'}`,
+        borderRadius: 999,
+        cursor: disabled ? 'not-allowed' : 'pointer',
+        display: 'inline-flex',
+        alignItems: 'center',
+        gap: 4,
+        fontWeight: active ? 500 : 400,
+      }}
+    >
+      {children}
+    </button>
   )
 }
 
@@ -421,42 +497,13 @@ function VariantCountPicker({
   onChange: (n: 1 | 2 | 4) => void
 }): JSX.Element {
   const options: (1 | 2 | 4)[] = [1, 2, 4]
+  const idx = options.indexOf(value)
+  const next = (): void => onChange(options[(idx + 1) % options.length])
   return (
-    <div
-      role="group"
-      aria-label="Variant count"
-      title="Number of variants to generate"
-      style={{
-        display: 'inline-flex',
-        border: '1px solid var(--border)',
-        borderRadius: 'var(--radius-sm)',
-        overflow: 'hidden',
-        height: 32,
-      }}
-    >
-      {options.map((n) => {
-        const active = n === value
-        return (
-          <button
-            key={n}
-            type="button"
-            onClick={() => onChange(n)}
-            style={{
-              padding: '0 10px',
-              border: 'none',
-              borderRadius: 0,
-              background: active ? 'var(--bg-elev-2)' : 'transparent',
-              color: active ? 'var(--fg)' : 'var(--fg-dim)',
-              fontSize: 12,
-              fontWeight: active ? 600 : 400,
-              minWidth: 30,
-            }}
-          >
-            {n}×
-          </button>
-        )
-      })}
-    </div>
+    <Chip onClick={next} active title="Variant count — click to cycle">
+      <span style={{ color: 'var(--ink-dim)', marginRight: 4 }}>count</span>
+      <b style={{ fontWeight: 600, color: 'var(--ink)' }}>{value}×</b>
+    </Chip>
   )
 }
 
@@ -483,42 +530,17 @@ function AspectPicker({
   value: AspectRatio
   onChange: (v: AspectRatio) => void
 }): JSX.Element {
+  const idx = ASPECT_OPTIONS.findIndex((o) => o.value === value)
+  const current = ASPECT_OPTIONS[idx >= 0 ? idx : 0]
+  const next = (): void => {
+    const n = ASPECT_OPTIONS[(idx + 1) % ASPECT_OPTIONS.length]
+    onChange(n.value)
+  }
   return (
-    <div
-      role="group"
-      aria-label="Aspect ratio"
-      title="Aspect ratio"
-      style={{
-        display: 'inline-flex',
-        border: '1px solid var(--border)',
-        borderRadius: 'var(--radius-sm)',
-        overflow: 'hidden',
-        height: 32,
-      }}
-    >
-      {ASPECT_OPTIONS.map((o) => {
-        const active = o.value === value
-        return (
-          <button
-            key={o.value}
-            type="button"
-            onClick={() => onChange(o.value)}
-            title={o.label}
-            style={{
-              padding: '0 10px',
-              border: 'none',
-              borderRadius: 0,
-              background: active ? 'var(--bg-elev-2)' : 'transparent',
-              color: active ? 'var(--fg)' : 'var(--fg-dim)',
-              fontSize: 12,
-              fontWeight: active ? 600 : 400,
-            }}
-          >
-            {o.label}
-          </button>
-        )
-      })}
-    </div>
+    <Chip onClick={next} active title="Aspect ratio — click to cycle">
+      <span style={{ color: 'var(--ink-dim)', marginRight: 4 }}>ratio</span>
+      <b style={{ fontWeight: 600, color: 'var(--ink)' }}>{current.label}</b>
+    </Chip>
   )
 }
 
@@ -529,26 +551,24 @@ function StylePicker({
   value: StylePreset | null
   onChange: (v: StylePreset | null) => void
 }): JSX.Element {
+  const idx = STYLE_OPTIONS.findIndex((o) => o.value === value)
+  const current = STYLE_OPTIONS[idx >= 0 ? idx : 0]
+  const next = (): void => {
+    const n = STYLE_OPTIONS[(idx + 1) % STYLE_OPTIONS.length]
+    onChange(n.value)
+  }
   return (
-    <select
-      value={value ?? ''}
-      onChange={(e) => onChange((e.target.value || null) as StylePreset | null)}
-      title="Style preset"
-      style={{
-        height: 32,
-        padding: '0 8px',
-        borderRadius: 'var(--radius-sm)',
-        border: '1px solid var(--border)',
-        background: 'var(--bg-elev)',
-        color: value ? 'var(--fg)' : 'var(--fg-dim)',
-        fontSize: 12,
-      }}
-    >
-      {STYLE_OPTIONS.map((o) => (
-        <option key={o.label} value={o.value ?? ''}>
-          {o.label}
-        </option>
-      ))}
-    </select>
+    <Chip onClick={next} active={value !== null} title="Style preset — click to cycle">
+      <span style={{ color: 'var(--ink-dim)', marginRight: 4 }}>style</span>
+      <b
+        style={{
+          fontWeight: 600,
+          color: value ? 'var(--ink)' : 'var(--ink-faint)',
+          textTransform: 'lowercase',
+        }}
+      >
+        {value ? current.label.toLowerCase() : 'auto'}
+      </b>
+    </Chip>
   )
 }

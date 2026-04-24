@@ -7,7 +7,6 @@ import { useHistoryKeybindings } from './lib/history.js'
 import { Canvas } from './components/Canvas.js'
 import { CommandBar } from './components/CommandBar.js'
 import { ContextDrawer } from './components/ContextDrawer.js'
-import { MiniMap } from './components/MiniMap.js'
 import { SelectionToolbar } from './components/SelectionToolbar.js'
 import { ShortcutsHelp } from './components/ShortcutsHelp.js'
 import { TopBar } from './components/TopBar.js'
@@ -68,7 +67,6 @@ export function App(): JSX.Element {
       <TopBar />
       <SelectionToolbar />
       {isEmpty ? <WelcomeHero /> : <ChatFeed />}
-      <MiniMap />
       <ContextDrawer />
       <CommandBar />
       <ShortcutsHelp />

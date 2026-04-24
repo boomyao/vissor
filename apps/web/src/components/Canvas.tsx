@@ -500,7 +500,7 @@ export function Canvas(): JSX.Element {
         position: 'absolute',
         inset: 0,
         overflow: 'hidden',
-        background: canvasBg ?? 'var(--bg)',
+        background: canvasBg ?? 'var(--paper)',
         touchAction: 'none',
       }}
     >
@@ -512,8 +512,8 @@ export function Canvas(): JSX.Element {
           inset: 0,
           pointerEvents: 'none',
           backgroundImage:
-            'radial-gradient(circle, rgba(0,0,0,0.07) 1px, transparent 1px)',
-          backgroundSize: `${32 * camera.scale}px ${32 * camera.scale}px`,
+            'radial-gradient(circle, rgba(26,25,21,0.09) 1px, transparent 1px)',
+          backgroundSize: `${24 * camera.scale}px ${24 * camera.scale}px`,
           backgroundPosition: `${camera.x}px ${camera.y}px`,
         }}
       />
