@@ -1,5 +1,6 @@
 import { useCallback, useMemo } from 'react'
 import { useStore } from '../store/store.js'
+import { useT } from '../lib/i18n/index.js'
 
 const MAP_W = 180
 const MAP_H = 120
@@ -15,6 +16,7 @@ const MAP_PAD = 20 // world-space padding around content bounds
  * so the caller positions it (e.g. inside a popover).
  */
 export function MiniMap(): JSX.Element | null {
+  const t = useT()
   const items = useStore((s) => s.items)
   const camera = useStore((s) => s.camera)
   const setCamera = useStore((s) => s.setCamera)
@@ -108,7 +110,7 @@ export function MiniMap(): JSX.Element | null {
         overflow: 'hidden',
         cursor: 'pointer',
       }}
-      title="Mini-map — click to recentre"
+      title={t('minimap.title')}
     >
       {items.map((item) => {
         const tl = project(item.x, item.y)

@@ -1,6 +1,7 @@
 import React from 'react'
 import ReactDOM from 'react-dom/client'
 import { App } from './App.js'
+import { getLocale, translate } from './lib/i18n/index.js'
 import './styles/global.css'
 
 interface ErrorBoundaryState {
@@ -46,7 +47,9 @@ class RootErrorBoundary extends React.Component<
             textAlign: 'center',
           }}
         >
-          <div style={{ fontWeight: 600 }}>Something broke in the UI.</div>
+          <div style={{ fontWeight: 600 }}>
+            {translate(getLocale(), 'common.errorTitle')}
+          </div>
           <pre
             style={{
               fontSize: 12,
@@ -63,7 +66,7 @@ class RootErrorBoundary extends React.Component<
             onClick={() => window.location.reload()}
             style={{ padding: '8px 16px' }}
           >
-            Reload
+            {translate(getLocale(), 'common.reload')}
           </button>
         </div>
       )

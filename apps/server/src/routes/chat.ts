@@ -18,6 +18,7 @@ export async function chatRoutes(app: FastifyInstance): Promise<void> {
       variantCount,
       stylePreset,
       aspectRatio,
+      reasoningEffort,
     } = req.body
     if (!projectId || !text) {
       return reply.code(400).send({ error: 'bad_request' })
@@ -41,6 +42,7 @@ export async function chatRoutes(app: FastifyInstance): Promise<void> {
       variantCount,
       stylePreset,
       aspectRatio,
+      reasoningEffort,
       createdAt: Date.now(),
     }
     await appendUserMessage(projectId, userMessage)
@@ -53,6 +55,7 @@ export async function chatRoutes(app: FastifyInstance): Promise<void> {
       variantCount,
       stylePreset,
       aspectRatio,
+      reasoningEffort,
     }).catch((err) => {
       app.log.error({ err, projectId, turnId }, 'runTurn failed')
     })

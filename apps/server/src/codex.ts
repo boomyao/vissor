@@ -59,6 +59,20 @@ interface RunTurnParams {
   variantCount?: number
   stylePreset?: string
   aspectRatio?: string
+  /** Codex model_reasoning_effort override. Undefined inherits ~/.codex/config.toml. */
+  reasoningEffort?: string
+}
+
+/**
+ * Whitelist guard for model_reasoning_effort. Prevents arbitrary
+ * user strings from flowing into the codex CLI flag. Anything outside
+ * the whitelist falls back to the user's config.toml default.
+ */
+function validReasoningEffort(v: string | undefined): string | null {
+  if (!v) return null
+  return v === 'low' || v === 'medium' || v === 'high' || v === 'xhigh'
+    ? v
+    : null
 }
 
 /** Place a tile on a fresh row below existing content. */
@@ -280,6 +294,7 @@ async function runTurnCore({
     variantCount: requestedVariantCount,
     stylePreset,
     aspectRatio,
+    reasoningEffort,
   } = params
 
   const project = await getProject(projectId)
@@ -294,18 +309,19 @@ async function runTurnCore({
   for (const p of attachedImagePaths) {
     imageArgs.push('-i', p)
   }
+  // Reasoning effort: if the request supplied a recognised value we
+  // pass it through to codex. Otherwise we let codex inherit whatever
+  // is in ~/.codex/config.toml. Earlier code forced "low" here and
+  // starved image_gen — only opt in when the client is explicit.
+  const effortArgs: string[] = []
+  const effort = validReasoningEffort(reasoningEffort)
+  if (effort) effortArgs.push('-c', `model_reasoning_effort=${effort}`)
+
   const commonArgs = [
     '--json',
     '--dangerously-bypass-approvals-and-sandbox',
     '--skip-git-repo-check',
-    // Intentionally DO NOT override model_reasoning_effort. Earlier
-    // code forced "low" on the theory that image tasks don't need
-    // heavy reasoning; in practice that starved the model and made it
-    // reach for the fake `imagegen` shell skill instead of the native
-    // image_gen tool, producing zero-image "successful" turns. The
-    // ChatGPT Desktop client runs at the user's configured effort
-    // (often "xhigh") and that's what reliably picks image_gen.
-    // Keep that parity — inherit whatever is in ~/.codex/config.toml.
+    ...effortArgs,
     ...imageArgs,
   ]
   // Wrap the user's text in the design-agent system prompt. Codex

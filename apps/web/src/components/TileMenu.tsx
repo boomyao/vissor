@@ -3,6 +3,7 @@ import type { CanvasItem } from '@vissor/shared'
 import { useStore } from '../store/store.js'
 import { api } from '../lib/api.js'
 import { pushHistory } from '../lib/history.js'
+import { getLocale, translate, useT } from '../lib/i18n/index.js'
 
 interface Props {
   item: CanvasItem
@@ -21,6 +22,7 @@ interface Props {
  * clips against the tile edges.
  */
 export function TileMenu({ item, x, y, onClose }: Props): JSX.Element {
+  const t = useT()
   const project = useStore((s) => s.project)
   const attach = useStore((s) => s.attachAsset)
   const attached = useStore((s) => s.attachedAssetIds)
@@ -80,9 +82,7 @@ export function TileMenu({ item, x, y, onClose }: Props): JSX.Element {
     // that codex handles well via the design-agent system prompt.
     window.dispatchEvent(
       new CustomEvent('vissor:prefill-composer', {
-        detail: {
-          text: 'More variations of this — keep the subject and composition, vary the lighting and palette.',
-        },
+        detail: { text: translate(getLocale(), 'tile.generateMorePrompt') },
       }),
     )
   }
@@ -143,23 +143,27 @@ export function TileMenu({ item, x, y, onClose }: Props): JSX.Element {
       }}
       onMouseDown={(e) => e.stopPropagation()}
     >
-      <MenuItem label="Duplicate" onClick={onDuplicate} disabled={item.kind !== 'image'} />
+      <MenuItem
+        label={t('tile.duplicate')}
+        onClick={onDuplicate}
+        disabled={item.kind !== 'image'}
+      />
       <MenuItem
         label={
           assetId && attached.includes(assetId)
-            ? 'Attached as reference'
-            : 'Use as reference'
+            ? t('tile.attachedAsReference')
+            : t('tile.useAsReference')
         }
         onClick={onUseAsReference}
         disabled={!assetId || (!!assetId && attached.includes(assetId))}
       />
       <MenuItem
-        label="Generate more like this"
+        label={t('tile.generateMore')}
         onClick={onGenerateMoreLikeThis}
         disabled={!assetId}
       />
-      <MenuItem label="Bring to front" onClick={onBringToFront} />
-      <MenuItem label="Send to back" onClick={onSendToBack} />
+      <MenuItem label={t('tile.bringToFront')} onClick={onBringToFront} />
+      <MenuItem label={t('tile.sendToBack')} onClick={onSendToBack} />
       {assetId && (
         <a
           href={api.fileUrl(assetId)}
@@ -176,11 +180,11 @@ export function TileMenu({ item, x, y, onClose }: Props): JSX.Element {
           onMouseEnter={(e) => (e.currentTarget.style.background = 'var(--bg-elev-2)')}
           onMouseLeave={(e) => (e.currentTarget.style.background = 'transparent')}
         >
-          Download
+          {t('tile.download')}
         </a>
       )}
       <div style={{ height: 1, background: 'var(--border)', margin: '4px 0' }} />
-      <MenuItem label="Delete" destructive onClick={onDelete} />
+      <MenuItem label={t('tile.delete')} destructive onClick={onDelete} />
     </div>
   )
 }

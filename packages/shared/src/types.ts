@@ -91,6 +91,8 @@ export interface UserMessage {
   stylePreset?: string
   /** Aspect ratio requested at send time, for Retry. */
   aspectRatio?: string
+  /** Codex reasoning budget requested at send time, for Retry. */
+  reasoningEffort?: string
   createdAt: number
 }
 

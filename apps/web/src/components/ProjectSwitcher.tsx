@@ -7,6 +7,8 @@ import {
   renameCurrent,
   switchProject,
 } from '../lib/projectOps.js'
+import { translate, useT } from '../lib/i18n/index.js'
+import { getLocale } from '../lib/i18n/index.js'
 
 /**
  * Top-bar button that expands into a dropdown listing all projects
@@ -14,6 +16,7 @@ import {
  * flow as a prompt() for now — the shell stays minimal.
  */
 export function ProjectSwitcher(): JSX.Element {
+  const t = useT()
   const current = useStore((s) => s.project)
   const projects = useStore((s) => s.projects)
   const [open, setOpen] = useState(false)
@@ -36,7 +39,7 @@ export function ProjectSwitcher(): JSX.Element {
       await switchProject(id)
     } catch (err) {
       // eslint-disable-next-line no-alert
-      alert(`Failed to open project: ${err}`)
+      alert(translate(getLocale(), 'project.switchFailed', { error: String(err) }))
     }
   }, [current?.id])
 
@@ -46,7 +49,7 @@ export function ProjectSwitcher(): JSX.Element {
       await createAndSwitch()
     } catch (err) {
       // eslint-disable-next-line no-alert
-      alert(`Failed to create project: ${err}`)
+      alert(translate(getLocale(), 'project.createFailed', { error: String(err) }))
     }
   }, [])
 
@@ -54,7 +57,7 @@ export function ProjectSwitcher(): JSX.Element {
     setOpen(false)
     if (!current) return
     // eslint-disable-next-line no-alert
-    const next = prompt('Project name', current.name)?.trim()
+    const next = prompt(translate(getLocale(), 'project.renamePrompt'), current.name)?.trim()
     if (!next || next === current.name) return
     await renameCurrent(next)
   }, [current])
@@ -66,7 +69,7 @@ export function ProjectSwitcher(): JSX.Element {
       await duplicateCurrent()
     } catch (err) {
       // eslint-disable-next-line no-alert
-      alert(`Failed to duplicate project: ${err}`)
+      alert(translate(getLocale(), 'project.duplicateFailed', { error: String(err) }))
     }
   }, [current])
 
@@ -74,7 +77,7 @@ export function ProjectSwitcher(): JSX.Element {
     setOpen(false)
     if (!current) return
     // eslint-disable-next-line no-alert
-    if (!confirm(`Delete "${current.name}"? This cannot be undone.`)) return
+    if (!confirm(translate(getLocale(), 'project.deleteConfirm', { name: current.name }))) return
     await deleteCurrent()
   }, [current])
 
@@ -105,7 +108,7 @@ export function ProjectSwitcher(): JSX.Element {
             whiteSpace: 'nowrap',
           }}
         >
-          {current?.name ?? 'Untitled project'}
+          {current?.name ?? t('project.untitled')}
         </span>
         <span style={{ color: 'var(--ink-dim)', fontSize: 10 }}>▾</span>
       </button>
@@ -174,16 +177,20 @@ export function ProjectSwitcher(): JSX.Element {
               gap: 2,
             }}
           >
-            <MenuItem onSelect={onNew} label="+ New project" />
+            <MenuItem onSelect={onNew} label={t('project.new')} />
             <MenuItem
               onSelect={onDuplicate}
-              label="Duplicate current"
+              label={t('project.duplicate')}
               disabled={!current}
             />
-            <MenuItem onSelect={onRename} label="Rename current…" disabled={!current} />
+            <MenuItem
+              onSelect={onRename}
+              label={t('project.rename')}
+              disabled={!current}
+            />
             <MenuItem
               onSelect={onDelete}
-              label="Delete current…"
+              label={t('project.delete')}
               disabled={!current}
               destructive
             />

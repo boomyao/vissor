@@ -1,31 +1,53 @@
 import { useStore } from '../store/store.js'
+import { useLocale, useT, type I18nKey } from '../lib/i18n/index.js'
 
-const STARTER_PROMPTS: string[] = [
-  'A logo for a third-wave coffee brand',
-  'Editorial illustration of a lighthouse',
-  '4 hero frames for a running app',
-  'Architectural moodboard — brutalist',
+const STARTER_KEYS: I18nKey[] = [
+  'hero.starter.logo',
+  'hero.starter.lighthouse',
+  'hero.starter.running',
+  'hero.starter.brutalist',
 ]
+
+/**
+ * Split a template like "A {em:B} C" into three parts around the
+ * italic marker. If the marker is absent, the whole string is
+ * treated as the pre-italic segment. Keeps translations flexible
+ * about where the emphasised word appears in the sentence.
+ */
+function splitEmphasis(text: string): {
+  pre: string
+  em: string
+  post: string
+} {
+  const match = text.match(/\{em:([^}]*)\}/)
+  if (!match) return { pre: text, em: '', post: '' }
+  const idx = match.index ?? 0
+  return {
+    pre: text.slice(0, idx),
+    em: match[1],
+    post: text.slice(idx + match[0].length),
+  }
+}
 
 /**
  * Empty-state hero. Rendered when the current project has no canvas
  * items and no chat history yet. Big serif display + starter chips
- * that prefill the composer. The command bar stays docked at the
- * bottom and remains interactive (hero is pointer-events: none
- * except for the chips themselves).
+ * that prefill the composer.
  */
 export function WelcomeHero(): JSX.Element {
+  const t = useT()
+  const locale = useLocale()
   const project = useStore((s) => s.project)
 
-  const label = project?.name
-    ? `${project.name} · ${new Date().toLocaleDateString('en-US', {
-        month: 'short',
-        day: 'numeric',
-      })}`
-    : `Untitled project · ${new Date().toLocaleDateString('en-US', {
-        month: 'short',
-        day: 'numeric',
-      })}`
+  const date = new Date().toLocaleDateString(
+    locale === 'zh' ? 'zh-CN' : 'en-US',
+    { month: 'short', day: 'numeric' },
+  )
+  const meta = project?.name
+    ? t('hero.meta', { project: project.name, date })
+    : t('hero.metaUntitled', { date })
+
+  const line2 = splitEmphasis(t('hero.titleLine2'))
 
   const pickStarter = (text: string): void => {
     window.dispatchEvent(
@@ -61,7 +83,7 @@ export function WelcomeHero(): JSX.Element {
           className="vissor-meta"
           style={{ marginBottom: 20, letterSpacing: 3 }}
         >
-          {label}
+          {meta}
         </div>
         <h1
           style={{
@@ -74,9 +96,11 @@ export function WelcomeHero(): JSX.Element {
             letterSpacing: '-0.02em',
           }}
         >
-          What do you want
+          {t('hero.titleLine1')}
           <br />
-          <em style={{ fontStyle: 'italic' }}>to make</em> today?
+          {line2.pre}
+          {line2.em && <em style={{ fontStyle: 'italic' }}>{line2.em}</em>}
+          {line2.post}
         </h1>
         <p
           style={{
@@ -87,8 +111,7 @@ export function WelcomeHero(): JSX.Element {
             lineHeight: 1.5,
           }}
         >
-          Describe it below. Each send spawns a cluster of variants on the
-          canvas — drag them, iterate on them, arrange them.
+          {t('hero.subtitle')}
         </p>
 
         <div
@@ -102,25 +125,28 @@ export function WelcomeHero(): JSX.Element {
             maxWidth: 720,
           }}
         >
-          {STARTER_PROMPTS.map((s) => (
-            <button
-              key={s}
-              type="button"
-              onClick={() => pickStarter(s)}
-              style={{
-                fontSize: 13,
-                padding: '8px 14px',
-                background: 'var(--card)',
-                border: '1px solid var(--line)',
-                color: 'var(--ink)',
-                borderRadius: 999,
-                cursor: 'pointer',
-              }}
-            >
-              <span style={{ color: 'var(--accent-ink)', marginRight: 6 }}>↯</span>
-              {s}
-            </button>
-          ))}
+          {STARTER_KEYS.map((key) => {
+            const label = t(key)
+            return (
+              <button
+                key={key}
+                type="button"
+                onClick={() => pickStarter(label)}
+                style={{
+                  fontSize: 13,
+                  padding: '8px 14px',
+                  background: 'var(--card)',
+                  border: '1px solid var(--line)',
+                  color: 'var(--ink)',
+                  borderRadius: 999,
+                  cursor: 'pointer',
+                }}
+              >
+                <span style={{ color: 'var(--accent-ink)', marginRight: 6 }}>↯</span>
+                {label}
+              </button>
+            )
+          })}
         </div>
       </div>
     </div>

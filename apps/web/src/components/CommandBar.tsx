@@ -1,7 +1,8 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import type { AspectRatio, StylePreset } from '@vissor/shared'
+import type { AspectRatio, ReasoningEffort } from '@vissor/shared'
 import { useStore } from '../store/store.js'
 import { api } from '../lib/api.js'
+import { useT, type I18nKey } from '../lib/i18n/index.js'
 
 /**
  * Bottom floating command bar. Holds the prompt textarea, attached
@@ -9,6 +10,7 @@ import { api } from '../lib/api.js'
  * centre-bottom "compose dock".
  */
 export function CommandBar(): JSX.Element {
+  const t = useT()
   const project = useStore((s) => s.project)
   const assets = useStore((s) => s.assets)
   const attached = useStore((s) => s.attachedAssetIds)
@@ -36,8 +38,9 @@ export function CommandBar(): JSX.Element {
   const [text, setText] = useState('')
   const [busyUpload, setBusyUpload] = useState(false)
   const [variantCount, setVariantCount] = useState<1 | 2 | 4>(2)
-  const [stylePreset, setStylePreset] = useState<StylePreset | null>(null)
   const [aspectRatio, setAspectRatio] = useState<AspectRatio>('square')
+  const [reasoningEffort, setReasoningEffort] =
+    useState<ReasoningEffort>('high')
   const fileRef = useRef<HTMLInputElement>(null)
   const textAreaRef = useRef<HTMLTextAreaElement>(null)
 
@@ -82,8 +85,8 @@ export function CommandBar(): JSX.Element {
         text: text.trim(),
         attachedAssetIds: finalAttached,
         variantCount,
-        stylePreset: stylePreset ?? undefined,
         aspectRatio,
+        reasoningEffort,
       }
       setText('')
       clearAttached()
@@ -132,8 +135,8 @@ export function CommandBar(): JSX.Element {
       canSend,
       clearAttached,
       project,
+      reasoningEffort,
       selectedImageAssetIds,
-      stylePreset,
       text,
       variantCount,
     ],
@@ -285,10 +288,9 @@ export function CommandBar(): JSX.Element {
             <span style={{ fontSize: 11 }}>+{selectedImageAssetIds.length - 3}</span>
           )}
           <span>
-            Iterating on{' '}
             {selectedImageAssetIds.length === 1
-              ? '1 tile'
-              : `${selectedImageAssetIds.length} tiles`}
+              ? t('command.iteratingOne')
+              : t('command.iteratingMany', { n: selectedImageAssetIds.length })}
           </span>
         </div>
       )}
@@ -348,7 +350,7 @@ export function CommandBar(): JSX.Element {
         value={text}
         onChange={(e) => setText(e.target.value)}
         onKeyDown={onKeyDown}
-        placeholder="Describe what you want to create…"
+        placeholder={t('command.placeholder')}
         rows={2}
         style={{
           resize: 'none',
@@ -385,13 +387,16 @@ export function CommandBar(): JSX.Element {
           <Chip
             onClick={() => fileRef.current?.click()}
             disabled={busyUpload || !project}
-            title="Attach reference image"
+            title={t('command.addImageTitle')}
           >
-            {busyUpload ? 'Uploading…' : '＋ Image'}
+            {busyUpload ? t('command.uploading') : t('command.addImage')}
           </Chip>
           <VariantCountPicker value={variantCount} onChange={setVariantCount} />
-          <StylePicker value={stylePreset} onChange={setStylePreset} />
           <AspectPicker value={aspectRatio} onChange={setAspectRatio} />
+          <ReasoningPicker
+            value={reasoningEffort}
+            onChange={setReasoningEffort}
+          />
         </div>
         <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
           {!activeTurnId && (
@@ -399,7 +404,7 @@ export function CommandBar(): JSX.Element {
               className="vissor-meta"
               style={{ letterSpacing: 1, marginRight: 2 }}
             >
-              ⏎ Send
+              {t('command.send')}
             </span>
           )}
           {activeTurnId ? (
@@ -417,9 +422,9 @@ export function CommandBar(): JSX.Element {
                 fontSize: 13,
                 fontWeight: 500,
               }}
-              title="Cancel this turn"
+              title={t('command.cancelTurnTitle')}
             >
-              Cancel
+              {t('command.cancelTurn')}
             </button>
           ) : (
             <button
@@ -440,7 +445,7 @@ export function CommandBar(): JSX.Element {
                 gap: 6,
               }}
             >
-              Generate <span style={{ opacity: 0.6 }}>↗</span>
+              {t('command.generate')} <span style={{ opacity: 0.6 }}>↗</span>
             </button>
           )}
         </div>
@@ -496,31 +501,25 @@ function VariantCountPicker({
   value: 1 | 2 | 4
   onChange: (n: 1 | 2 | 4) => void
 }): JSX.Element {
+  const t = useT()
   const options: (1 | 2 | 4)[] = [1, 2, 4]
   const idx = options.indexOf(value)
   const next = (): void => onChange(options[(idx + 1) % options.length])
   return (
-    <Chip onClick={next} active title="Variant count — click to cycle">
-      <span style={{ color: 'var(--ink-dim)', marginRight: 4 }}>count</span>
+    <Chip onClick={next} active title={t('command.countTitle')}>
+      <span style={{ color: 'var(--ink-dim)', marginRight: 4 }}>
+        {t('command.countLabel')}
+      </span>
       <b style={{ fontWeight: 600, color: 'var(--ink)' }}>{value}×</b>
     </Chip>
   )
 }
 
-const STYLE_OPTIONS: { value: StylePreset | null; label: string }[] = [
-  { value: null, label: 'Auto style' },
-  { value: 'minimal', label: 'Minimal' },
-  { value: 'photoreal', label: 'Photoreal' },
-  { value: 'illustration', label: 'Illustration' },
-  { value: '3d', label: '3D' },
-  { value: 'sketch', label: 'Sketch' },
-]
-
-const ASPECT_OPTIONS: { value: AspectRatio; label: string; glyph: string }[] = [
-  { value: 'square', label: '1:1', glyph: '■' },
-  { value: 'portrait', label: '3:4', glyph: '▮' },
-  { value: 'landscape', label: '4:3', glyph: '▬' },
-  { value: 'wide', label: '16:9', glyph: '▭' },
+const ASPECT_OPTIONS: { value: AspectRatio; label: string }[] = [
+  { value: 'square', label: '1:1' },
+  { value: 'portrait', label: '3:4' },
+  { value: 'landscape', label: '4:3' },
+  { value: 'wide', label: '16:9' },
 ]
 
 function AspectPicker({
@@ -530,6 +529,7 @@ function AspectPicker({
   value: AspectRatio
   onChange: (v: AspectRatio) => void
 }): JSX.Element {
+  const t = useT()
   const idx = ASPECT_OPTIONS.findIndex((o) => o.value === value)
   const current = ASPECT_OPTIONS[idx >= 0 ? idx : 0]
   const next = (): void => {
@@ -537,38 +537,45 @@ function AspectPicker({
     onChange(n.value)
   }
   return (
-    <Chip onClick={next} active title="Aspect ratio — click to cycle">
-      <span style={{ color: 'var(--ink-dim)', marginRight: 4 }}>ratio</span>
+    <Chip onClick={next} active title={t('command.ratioTitle')}>
+      <span style={{ color: 'var(--ink-dim)', marginRight: 4 }}>
+        {t('command.ratioLabel')}
+      </span>
       <b style={{ fontWeight: 600, color: 'var(--ink)' }}>{current.label}</b>
     </Chip>
   )
 }
 
-function StylePicker({
+const REASONING_OPTIONS: { value: ReasoningEffort; labelKey: I18nKey }[] = [
+  { value: 'low', labelKey: 'command.reasoningLow' },
+  { value: 'medium', labelKey: 'command.reasoningMedium' },
+  { value: 'high', labelKey: 'command.reasoningHigh' },
+  { value: 'xhigh', labelKey: 'command.reasoningXhigh' },
+]
+
+function ReasoningPicker({
   value,
   onChange,
 }: {
-  value: StylePreset | null
-  onChange: (v: StylePreset | null) => void
+  value: ReasoningEffort
+  onChange: (v: ReasoningEffort) => void
 }): JSX.Element {
-  const idx = STYLE_OPTIONS.findIndex((o) => o.value === value)
-  const current = STYLE_OPTIONS[idx >= 0 ? idx : 0]
+  const t = useT()
+  const idx = REASONING_OPTIONS.findIndex((o) => o.value === value)
+  const current = REASONING_OPTIONS[idx >= 0 ? idx : 0]
   const next = (): void => {
-    const n = STYLE_OPTIONS[(idx + 1) % STYLE_OPTIONS.length]
+    const n = REASONING_OPTIONS[(idx + 1) % REASONING_OPTIONS.length]
     onChange(n.value)
   }
   return (
-    <Chip onClick={next} active={value !== null} title="Style preset — click to cycle">
-      <span style={{ color: 'var(--ink-dim)', marginRight: 4 }}>style</span>
-      <b
-        style={{
-          fontWeight: 600,
-          color: value ? 'var(--ink)' : 'var(--ink-faint)',
-          textTransform: 'lowercase',
-        }}
-      >
-        {value ? current.label.toLowerCase() : 'auto'}
+    <Chip onClick={next} active title={t('command.reasoningTitle')}>
+      <span style={{ color: 'var(--ink-dim)', marginRight: 4 }}>
+        {t('command.reasoningLabel')}
+      </span>
+      <b style={{ fontWeight: 600, color: 'var(--ink)' }}>
+        {t(current.labelKey)}
       </b>
     </Chip>
   )
 }
+

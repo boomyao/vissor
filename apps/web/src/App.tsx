@@ -4,6 +4,7 @@ import { useStore } from './store/store.js'
 import { bootInitialProject } from './lib/projectOps.js'
 import { fitCameraTo } from './lib/camera.js'
 import { useHistoryKeybindings } from './lib/history.js'
+import { useT } from './lib/i18n/index.js'
 import { Canvas } from './components/Canvas.js'
 import { CommandBar } from './components/CommandBar.js'
 import { ContextDrawer } from './components/ContextDrawer.js'
@@ -14,6 +15,7 @@ import { ChatFeed } from './components/ChatFeed.js'
 import { WelcomeHero } from './components/WelcomeHero.js'
 
 export function App(): JSX.Element {
+  const t = useT()
   const project = useStore((s) => s.project)
   const items = useStore((s) => s.items)
   const chatCount = useStore((s) => s.chat.length)
@@ -56,8 +58,8 @@ export function App(): JSX.Element {
   useProjectStream(project?.id ?? null)
   useHistoryKeybindings()
 
-  if (loading) return <FullscreenCenter text="Loading workspace…" />
-  if (err) return <FullscreenCenter text={`Could not load: ${err}`} />
+  if (loading) return <FullscreenCenter text={t('common.loading')} />
+  if (err) return <FullscreenCenter text={t('common.loadFailed', { error: err })} />
 
   const isEmpty = items.length === 0 && chatCount === 0
 

@@ -1,7 +1,8 @@
 import { useEffect, useRef, useState } from 'react'
-import type { AspectRatio, StylePreset } from '@vissor/shared'
+import type { AspectRatio, ReasoningEffort, StylePreset } from '@vissor/shared'
 import { useStore } from '../store/store.js'
 import { api } from '../lib/api.js'
+import { useT } from '../lib/i18n/index.js'
 
 const COLLAPSED_KEY = 'vissor:chatCollapsed'
 
@@ -10,6 +11,7 @@ const COLLAPSED_KEY = 'vissor:chatCollapsed'
  * stay uncluttered for "production" mode. Collapse state persists.
  */
 export function ChatFeed(): JSX.Element | null {
+  const t = useT()
   const chat = useStore((s) => s.chat)
   const scrollRef = useRef<HTMLDivElement>(null)
   const [collapsed, setCollapsed] = useState<boolean>(
@@ -36,7 +38,7 @@ export function ChatFeed(): JSX.Element | null {
       <button
         type="button"
         onClick={() => setCollapsed(false)}
-        title="Show conversation"
+        title={t('chat.show')}
         style={{
           position: 'absolute',
           bottom: 120,
@@ -69,7 +71,7 @@ export function ChatFeed(): JSX.Element | null {
             }}
           />
         )}
-        Conversation · {chat.length}
+        {t('chat.header', { n: chat.length })}
       </button>
     )
   }
@@ -118,12 +120,12 @@ export function ChatFeed(): JSX.Element | null {
               }}
             />
           )}
-          Conversation · {chat.length}
+          {t('chat.header', { n: chat.length })}
         </span>
         <button
           type="button"
           onClick={() => setCollapsed(true)}
-          title="Hide"
+          title={t('chat.hide')}
           style={{
             padding: '2px 6px',
             fontSize: 12,
@@ -171,7 +173,7 @@ export function ChatFeed(): JSX.Element | null {
                 fontSize: 9,
               }}
             >
-              <span>{m.role === 'user' ? 'You' : 'Agent'}</span>
+              <span>{m.role === 'user' ? t('chat.you') : t('chat.agent')}</span>
               {m.role === 'agent' && m.status === 'streaming' && (
                 <span
                   className="vissor-pulse"
@@ -182,11 +184,13 @@ export function ChatFeed(): JSX.Element | null {
                     letterSpacing: 0,
                   }}
                 >
-                  ● {m.statusLine ?? 'Thinking'}…
+                  ● {m.statusLine ?? t('chat.statusThinking')}…
                 </span>
               )}
               {m.role === 'agent' && m.status === 'failed' && (
-                <span style={{ color: 'var(--danger)' }}>· failed</span>
+                <span style={{ color: 'var(--danger)' }}>
+                  {t('chat.statusFailed')}
+                </span>
               )}
             </div>
             {m.role === 'user' && m.attachedAssetIds.length > 0 && (
@@ -236,6 +240,7 @@ export function ChatFeed(): JSX.Element | null {
 }
 
 function RetryButton({ turnId }: { turnId: string }): JSX.Element | null {
+  const t = useT()
   const project = useStore((s) => s.project)
   const chat = useStore((s) => s.chat)
   const activeTurnId = useStore((s) => s.activeTurnId)
@@ -257,6 +262,8 @@ function RetryButton({ turnId }: { turnId: string }): JSX.Element | null {
       variantCount: userMsg.variantCount,
       stylePreset: (userMsg.stylePreset as StylePreset | undefined) ?? undefined,
       aspectRatio: (userMsg.aspectRatio as AspectRatio | undefined) ?? undefined,
+      reasoningEffort:
+        (userMsg.reasoningEffort as ReasoningEffort | undefined) ?? undefined,
     }
     useStore.setState((s) => ({
       chat: [
@@ -270,6 +277,7 @@ function RetryButton({ turnId }: { turnId: string }): JSX.Element | null {
           variantCount: userMsg.variantCount,
           stylePreset: userMsg.stylePreset,
           aspectRatio: userMsg.aspectRatio,
+          reasoningEffort: userMsg.reasoningEffort,
           createdAt: Date.now(),
         },
         {
@@ -312,9 +320,9 @@ function RetryButton({ turnId }: { turnId: string }): JSX.Element | null {
         borderRadius: 999,
         border: '1px solid var(--border)',
       }}
-      title="Retry this turn"
+      title={t('chat.retryTitle')}
     >
-      ↻ Retry
+      {t('chat.retry')}
     </button>
   )
 }

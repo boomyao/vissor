@@ -2,6 +2,7 @@ import { useCallback, useState } from 'react'
 import { useStore } from '../store/store.js'
 import { api } from '../lib/api.js'
 import { pushHistory } from '../lib/history.js'
+import { useT } from '../lib/i18n/index.js'
 import {
   alignItems,
   distributeItems,
@@ -19,6 +20,7 @@ import {
  *   - Clear selection
  */
 export function SelectionToolbar(): JSX.Element | null {
+  const t = useT()
   const selection = useStore((s) => s.selection)
   const items = useStore((s) => s.items)
   const attachedAssetIds = useStore((s) => s.attachedAssetIds)
@@ -132,16 +134,16 @@ export function SelectionToolbar(): JSX.Element | null {
           alignSelf: 'center',
         }}
       >
-        {selection.size} selected
+        {t('selection.selected', { n: selection.size })}
       </span>
       {attachable.length > 0 && (
         <button
           type="button"
           onClick={onAttachAll}
           style={{ padding: '4px 12px', fontSize: 12, borderRadius: 999 }}
-          title="Attach all as references to the next prompt"
+          title={t('selection.useAsReferenceTitle')}
         >
-          ↯ Use as reference ({attachable.length})
+          {t('selection.useAsReference', { n: attachable.length })}
         </button>
       )}
       <div style={{ position: 'relative' }}>
@@ -149,9 +151,9 @@ export function SelectionToolbar(): JSX.Element | null {
           type="button"
           onClick={() => setAlignOpen((v) => !v)}
           style={{ padding: '4px 12px', fontSize: 12, borderRadius: 999 }}
-          title="Align / distribute selected"
+          title={t('selection.alignTitle')}
         >
-          ▤ Align
+          {t('selection.align')}
         </button>
         {alignOpen && (
           <div
@@ -171,23 +173,23 @@ export function SelectionToolbar(): JSX.Element | null {
             }}
             onMouseDown={(e) => e.stopPropagation()}
           >
-            <AlignButton label="⇤" onClick={() => onAlign('x', 'start')} title="Align left" />
-            <AlignButton label="⇔" onClick={() => onAlign('x', 'center')} title="Center horizontally" />
-            <AlignButton label="⇥" onClick={() => onAlign('x', 'end')} title="Align right" />
-            <AlignButton label="⇞" onClick={() => onAlign('y', 'start')} title="Align top" />
-            <AlignButton label="⇕" onClick={() => onAlign('y', 'center')} title="Center vertically" />
-            <AlignButton label="⇟" onClick={() => onAlign('y', 'end')} title="Align bottom" />
+            <AlignButton label="⇤" onClick={() => onAlign('x', 'start')} title={t('selection.alignLeft')} />
+            <AlignButton label="⇔" onClick={() => onAlign('x', 'center')} title={t('selection.alignCenterH')} />
+            <AlignButton label="⇥" onClick={() => onAlign('x', 'end')} title={t('selection.alignRight')} />
+            <AlignButton label="⇞" onClick={() => onAlign('y', 'start')} title={t('selection.alignTop')} />
+            <AlignButton label="⇕" onClick={() => onAlign('y', 'center')} title={t('selection.alignCenterV')} />
+            <AlignButton label="⇟" onClick={() => onAlign('y', 'end')} title={t('selection.alignBottom')} />
             <AlignButton
               label="↔"
               onClick={() => onDistribute('x')}
-              title="Distribute horizontally"
+              title={t('selection.distributeH')}
               disabled={selectedItems.length < 3}
             />
             <span />
             <AlignButton
               label="↕"
               onClick={() => onDistribute('y')}
-              title="Distribute vertically"
+              title={t('selection.distributeV')}
               disabled={selectedItems.length < 3}
             />
           </div>
@@ -198,9 +200,9 @@ export function SelectionToolbar(): JSX.Element | null {
           type="button"
           onClick={onDownloadAll}
           style={{ padding: '4px 12px', fontSize: 12, borderRadius: 999 }}
-          title="Download all selected"
+          title={t('selection.downloadTitle')}
         >
-          ↓ Download ({selectedImages.length})
+          {t('selection.download', { n: selectedImages.length })}
         </button>
       )}
       <button
@@ -212,17 +214,17 @@ export function SelectionToolbar(): JSX.Element | null {
           borderRadius: 999,
           color: 'var(--danger)',
         }}
-        title="Delete all selected (Cmd-Z to undo)"
+        title={t('selection.deleteTitle')}
       >
-        ✕ Delete ({selectedItems.length})
+        {t('selection.delete', { n: selectedItems.length })}
       </button>
       <button
         type="button"
         onClick={clearSelection}
-        title="Clear selection (Esc)"
+        title={t('selection.clearTitle')}
         style={{ padding: '4px 10px', fontSize: 12, borderRadius: 999 }}
       >
-        Clear
+        {t('selection.clear')}
       </button>
     </div>
   )

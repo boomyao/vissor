@@ -1,55 +1,65 @@
 import { useEffect, useState } from 'react'
+import { useT, type I18nKey } from '../lib/i18n/index.js'
 
-/**
- * Shortcuts help overlay — activated with `?` (Shift+/).
- *
- * Most of Vissor's power is hidden behind keyboard shortcuts; this
- * modal surfaces them so users don't have to read the source. Kept
- * as a leaf component with no store dependency so it can be dropped
- * into `App` wherever and never needs wiring.
- */
-const SHORTCUTS: { group: string; items: { keys: string; label: string }[] }[] = [
+type ShortcutItem = { keysKey: I18nKey | null; keys?: string; labelKey: I18nKey }
+type ShortcutGroup = { groupKey: I18nKey; items: ShortcutItem[] }
+
+const SHORTCUTS: ShortcutGroup[] = [
   {
-    group: 'Canvas',
+    groupKey: 'shortcuts.group.canvas',
     items: [
-      { keys: 'Space + drag', label: 'Pan' },
-      { keys: 'Scroll / pinch', label: 'Zoom' },
-      { keys: 'F', label: 'Fit to content' },
-      { keys: 'Esc', label: 'Clear selection / close drawer' },
+      { keysKey: 'shortcuts.keys.space', labelKey: 'shortcuts.canvas.pan' },
+      { keysKey: 'shortcuts.keys.scroll', labelKey: 'shortcuts.canvas.zoom' },
+      { keysKey: null, keys: 'F', labelKey: 'shortcuts.canvas.fit' },
+      { keysKey: null, keys: 'Esc', labelKey: 'shortcuts.canvas.esc' },
     ],
   },
   {
-    group: 'Tiles',
+    groupKey: 'shortcuts.group.tiles',
     items: [
-      { keys: 'Double-click empty area', label: 'Create text tile' },
-      { keys: 'T', label: 'Create text tile at viewport centre' },
-      { keys: 'R', label: 'Attach selected image(s) as reference' },
-      { keys: '← ↑ → ↓', label: 'Nudge selected (Shift = 10px)' },
-      { keys: 'Delete / Backspace', label: 'Delete selected' },
+      {
+        keysKey: 'shortcuts.keys.doubleClick',
+        labelKey: 'shortcuts.tiles.doubleClick',
+      },
+      { keysKey: null, keys: 'T', labelKey: 'shortcuts.tiles.createText' },
+      { keysKey: null, keys: 'R', labelKey: 'shortcuts.tiles.attachRef' },
+      { keysKey: 'shortcuts.keys.arrows', labelKey: 'shortcuts.tiles.nudge' },
+      { keysKey: 'shortcuts.keys.delete', labelKey: 'shortcuts.tiles.delete' },
     ],
   },
   {
-    group: 'Composer',
+    groupKey: 'shortcuts.group.composer',
     items: [
-      { keys: 'Enter', label: 'Send' },
-      { keys: 'Shift + Enter', label: 'Newline' },
-      { keys: '↑ (empty)', label: 'Recall last prompt' },
+      { keysKey: null, keys: 'Enter', labelKey: 'shortcuts.composer.send' },
+      {
+        keysKey: null,
+        keys: 'Shift + Enter',
+        labelKey: 'shortcuts.composer.newline',
+      },
+      {
+        keysKey: 'shortcuts.keys.enterEmpty',
+        labelKey: 'shortcuts.composer.recall',
+      },
     ],
   },
   {
-    group: 'History',
+    groupKey: 'shortcuts.group.history',
     items: [
-      { keys: 'Cmd/Ctrl + Z', label: 'Undo' },
-      { keys: 'Cmd/Ctrl + Shift + Z', label: 'Redo' },
+      { keysKey: 'shortcuts.keys.cmdZ', labelKey: 'shortcuts.history.undo' },
+      {
+        keysKey: 'shortcuts.keys.cmdShiftZ',
+        labelKey: 'shortcuts.history.redo',
+      },
     ],
   },
   {
-    group: 'Help',
-    items: [{ keys: '?', label: 'Show this overlay' }],
+    groupKey: 'shortcuts.group.help',
+    items: [{ keysKey: null, keys: '?', labelKey: 'shortcuts.help.overlay' }],
   },
 ]
 
 export function ShortcutsHelp(): JSX.Element | null {
+  const t = useT()
   const [open, setOpen] = useState(false)
 
   useEffect(() => {
@@ -59,8 +69,6 @@ export function ShortcutsHelp(): JSX.Element | null {
         tag === 'INPUT' ||
         tag === 'TEXTAREA' ||
         (e.target as HTMLElement | null)?.isContentEditable
-      // `?` on US layout is Shift+/; keep it simple and match the
-      // literal character the browser reports.
       if (!typing && e.key === '?') {
         e.preventDefault()
         setOpen((v) => !v)
@@ -109,18 +117,18 @@ export function ShortcutsHelp(): JSX.Element | null {
             marginBottom: 12,
           }}
         >
-          <strong style={{ fontSize: 14 }}>Keyboard shortcuts</strong>
+          <strong style={{ fontSize: 14 }}>{t('shortcuts.title')}</strong>
           <button
             type="button"
             onClick={() => setOpen(false)}
             style={{ padding: '4px 10px', fontSize: 12 }}
           >
-            Close
+            {t('common.close')}
           </button>
         </div>
         <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
           {SHORTCUTS.map((g) => (
-            <section key={g.group}>
+            <section key={g.groupKey}>
               <div
                 style={{
                   fontSize: 11,
@@ -130,7 +138,7 @@ export function ShortcutsHelp(): JSX.Element | null {
                   marginBottom: 6,
                 }}
               >
-                {g.group}
+                {t(g.groupKey)}
               </div>
               <dl
                 style={{
@@ -142,22 +150,27 @@ export function ShortcutsHelp(): JSX.Element | null {
                   fontSize: 13,
                 }}
               >
-                {g.items.map((it) => (
-                  <div key={it.keys} style={{ display: 'contents' }}>
-                    <dt
-                      style={{
-                        margin: 0,
-                        fontFamily:
-                          'ui-monospace, SFMono-Regular, Menlo, monospace',
-                        fontSize: 12,
-                        color: 'var(--fg-dim)',
-                      }}
-                    >
-                      {it.keys}
-                    </dt>
-                    <dd style={{ margin: 0, color: 'var(--fg)' }}>{it.label}</dd>
-                  </div>
-                ))}
+                {g.items.map((it, i) => {
+                  const keys = it.keysKey ? t(it.keysKey) : it.keys ?? ''
+                  return (
+                    <div key={`${keys}-${i}`} style={{ display: 'contents' }}>
+                      <dt
+                        style={{
+                          margin: 0,
+                          fontFamily:
+                            'ui-monospace, SFMono-Regular, Menlo, monospace',
+                          fontSize: 12,
+                          color: 'var(--fg-dim)',
+                        }}
+                      >
+                        {keys}
+                      </dt>
+                      <dd style={{ margin: 0, color: 'var(--fg)' }}>
+                        {t(it.labelKey)}
+                      </dd>
+                    </div>
+                  )
+                })}
               </dl>
             </section>
           ))}

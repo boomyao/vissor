@@ -1,5 +1,6 @@
 import { useStore } from '../store/store.js'
 import { api } from '../lib/api.js'
+import { useT } from '../lib/i18n/index.js'
 
 function extFromMime(mime: string): string {
   switch (mime) {
@@ -17,6 +18,7 @@ function extFromMime(mime: string): string {
  * "attached" tray for use as a reference in the next turn.
  */
 export function ContextDrawer(): JSX.Element | null {
+  const t = useT()
   const assetId = useStore((s) => s.drawerAssetId)
   const asset = useStore((s) => (assetId ? s.assets[assetId] : null))
   const close = useStore((s) => s.openDrawer)
@@ -53,7 +55,7 @@ export function ContextDrawer(): JSX.Element | null {
           borderBottom: '1px solid var(--border)',
         }}
       >
-        <strong style={{ fontSize: 13 }}>Asset</strong>
+        <strong style={{ fontSize: 13 }}>{t('drawer.asset')}</strong>
         <button
           type="button"
           onClick={() => close(null)}
@@ -101,16 +103,18 @@ export function ContextDrawer(): JSX.Element | null {
             color: 'var(--fg-dim)',
           }}
         >
-          <dt>ID</dt>
+          <dt>{t('drawer.id')}</dt>
           <dd style={{ margin: 0, color: 'var(--fg)', fontFamily: 'ui-monospace, monospace' }}>
             {asset.id.slice(0, 12)}…
           </dd>
-          <dt>Source</dt>
+          <dt>{t('drawer.source')}</dt>
           <dd style={{ margin: 0, color: 'var(--fg)' }}>{asset.source}</dd>
-          <dt>Type</dt>
+          <dt>{t('drawer.type')}</dt>
           <dd style={{ margin: 0, color: 'var(--fg)' }}>{asset.mime}</dd>
-          <dt>Size</dt>
-          <dd style={{ margin: 0, color: 'var(--fg)' }}>{(asset.size / 1024).toFixed(1)} KB</dd>
+          <dt>{t('drawer.size')}</dt>
+          <dd style={{ margin: 0, color: 'var(--fg)' }}>
+            {t('drawer.sizeKb', { n: (asset.size / 1024).toFixed(1) })}
+          </dd>
         </dl>
       </div>
 
@@ -134,12 +138,12 @@ export function ContextDrawer(): JSX.Element | null {
             fontWeight: 600,
           }}
         >
-          {isAttached ? 'Attached' : 'Use as reference'}
+          {isAttached ? t('drawer.attached') : t('drawer.useAsReference')}
         </button>
         <a
           href={api.fileUrl(assetId)}
           download={`vissor-${assetId.slice(0, 8)}${extFromMime(asset.mime)}`}
-          title="Download"
+          title={t('drawer.downloadTitle')}
           style={{
             display: 'inline-flex',
             alignItems: 'center',

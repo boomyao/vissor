@@ -3,15 +3,17 @@ import { useStore } from '../store/store.js'
 import { api } from '../lib/api.js'
 import { fitCameraTo } from '../lib/camera.js'
 import { exportProjectAsZip } from '../lib/exportProject.js'
+import { setLocale, useLocale, useT, type Locale } from '../lib/i18n/index.js'
+import type { I18nKey } from '../lib/i18n/index.js'
 import { MiniMap } from './MiniMap.js'
 import { ProjectSwitcher } from './ProjectSwitcher.js'
 
-const CANVAS_BG_PRESETS: { label: string; value: string }[] = [
-  { label: 'Paper', value: '#f2ede4' },
-  { label: 'Warm', value: '#eae3d5' },
-  { label: 'Cool', value: '#f7f3eb' },
-  { label: 'Card', value: '#fffefb' },
-  { label: 'Slate', value: '#2a2620' },
+const CANVAS_BG_PRESETS: { labelKey: I18nKey; value: string }[] = [
+  { labelKey: 'bg.paper', value: '#f2ede4' },
+  { labelKey: 'bg.warm', value: '#eae3d5' },
+  { labelKey: 'bg.cool', value: '#f7f3eb' },
+  { labelKey: 'bg.card', value: '#fffefb' },
+  { labelKey: 'bg.slate', value: '#2a2620' },
 ]
 
 /**
@@ -37,6 +39,8 @@ function Mark({ size = 18 }: { size?: number }): JSX.Element {
  * canvas stays edge-to-edge.
  */
 export function TopBar(): JSX.Element {
+  const t = useT()
+  const locale = useLocale()
   const scale = useStore((s) => s.camera.scale)
   const setCamera = useStore((s) => s.setCamera)
   const items = useStore((s) => s.items)
@@ -45,8 +49,10 @@ export function TopBar(): JSX.Element {
   const [exporting, setExporting] = useState(false)
   const [bgOpen, setBgOpen] = useState(false)
   const [mapOpen, setMapOpen] = useState(false)
+  const [langOpen, setLangOpen] = useState(false)
   const bgBtnRef = useRef<HTMLDivElement>(null)
   const mapBtnRef = useRef<HTMLDivElement>(null)
+  const langBtnRef = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
     if (!bgOpen) return
@@ -67,6 +73,16 @@ export function TopBar(): JSX.Element {
     document.addEventListener('mousedown', onClick)
     return () => document.removeEventListener('mousedown', onClick)
   }, [mapOpen])
+
+  useEffect(() => {
+    if (!langOpen) return
+    const onClick = (e: MouseEvent): void => {
+      if (!langBtnRef.current) return
+      if (!langBtnRef.current.contains(e.target as Node)) setLangOpen(false)
+    }
+    document.addEventListener('mousedown', onClick)
+    return () => document.removeEventListener('mousedown', onClick)
+  }, [langOpen])
 
   const onExport = async (): Promise<void> => {
     if (!project || exporting) return
@@ -176,18 +192,18 @@ export function TopBar(): JSX.Element {
         />
         <PillButton
           onClick={() => setCamera(fitCameraTo(items))}
-          title="Fit to content (F)"
+          title={t('common.fitTitle')}
         >
-          Fit
+          {t('common.fit')}
         </PillButton>
         <div ref={mapBtnRef} style={{ position: 'relative' }}>
           <PillButton
             onClick={() => setMapOpen((v) => !v)}
             disabled={items.length === 0}
             active={mapOpen}
-            title="Mini-map"
+            title={t('common.mapTitle')}
           >
-            Map
+            {t('common.map')}
           </PillButton>
           {mapOpen && items.length > 0 && (
             <div
@@ -213,7 +229,7 @@ export function TopBar(): JSX.Element {
             onClick={() => setBgOpen((v) => !v)}
             disabled={!project}
             active={bgOpen}
-            title="Canvas background"
+            title={t('common.bgTitle')}
           >
             <span
               aria-hidden
@@ -228,7 +244,7 @@ export function TopBar(): JSX.Element {
                 verticalAlign: -1,
               }}
             />
-            Bg
+            {t('common.bg')}
           </PillButton>
           {bgOpen && (
             <div
@@ -282,7 +298,7 @@ export function TopBar(): JSX.Element {
                         border: '1px solid var(--line)',
                       }}
                     />
-                    <span>{p.label}</span>
+                    <span>{t(p.labelKey)}</span>
                   </button>
                 )
               })}
@@ -297,7 +313,7 @@ export function TopBar(): JSX.Element {
           type="button"
           onClick={() => void onExport()}
           disabled={!project || items.length === 0 || exporting}
-          title="Download project as ZIP (images + manifest)"
+          title={t('common.exportTitle')}
           style={{
             height: 26,
             padding: '0 12px',
@@ -311,15 +327,72 @@ export function TopBar(): JSX.Element {
             cursor: 'pointer',
           }}
         >
-          {exporting ? 'Exporting…' : 'Export'}
+          {exporting ? t('common.exporting') : t('common.export')}
         </button>
+        <div ref={langBtnRef} style={{ position: 'relative' }}>
+          <PillButton
+            onClick={() => setLangOpen((v) => !v)}
+            active={langOpen}
+            title={t('lang.switch')}
+          >
+            {locale === 'zh' ? '中' : 'EN'}
+          </PillButton>
+          {langOpen && (
+            <div
+              style={{
+                position: 'absolute',
+                top: 'calc(100% + 8px)',
+                right: 0,
+                background: 'var(--card)',
+                border: '1px solid var(--line)',
+                borderRadius: 'var(--radius-lg)',
+                boxShadow: 'var(--shadow-lg)',
+                padding: 6,
+                display: 'flex',
+                flexDirection: 'column',
+                gap: 2,
+                zIndex: 20,
+                minWidth: 140,
+              }}
+              onMouseDown={(e) => e.stopPropagation()}
+            >
+              {(['en', 'zh'] as Locale[]).map((code) => {
+                const active = locale === code
+                const key: I18nKey = code === 'zh' ? 'lang.zh' : 'lang.en'
+                return (
+                  <button
+                    key={code}
+                    type="button"
+                    onClick={() => {
+                      setLocale(code)
+                      setLangOpen(false)
+                    }}
+                    style={{
+                      padding: '6px 10px',
+                      fontSize: 12,
+                      borderRadius: 6,
+                      border: 'none',
+                      background: active ? 'var(--paper-warm)' : 'transparent',
+                      color: 'var(--ink)',
+                      textAlign: 'left',
+                      cursor: 'pointer',
+                      fontFamily: 'var(--font-sans)',
+                    }}
+                  >
+                    {t(key)}
+                  </button>
+                )
+              })}
+            </div>
+          )}
+        </div>
         <PillButton
           onClick={() => {
             window.dispatchEvent(
               new KeyboardEvent('keydown', { key: '?', bubbles: true }),
             )
           }}
-          title="Keyboard shortcuts (?)"
+          title={t('common.shortcutsTitle')}
         >
           ?
         </PillButton>

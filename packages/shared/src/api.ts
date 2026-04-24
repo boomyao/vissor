@@ -13,6 +13,15 @@ export type StylePreset =
 /** Target aspect ratio for generated images. */
 export type AspectRatio = 'square' | 'portrait' | 'landscape' | 'wide'
 
+/**
+ * Codex reasoning budget. Higher values make codex think longer before
+ * calling tools — in this app that translates into more reliable
+ * tool selection (the native `image_gen` tool vs. shell fallbacks),
+ * richer prompt expansion, and more variation between variants.
+ * Lower values are faster but can starve image generation outright.
+ */
+export type ReasoningEffort = 'low' | 'medium' | 'high' | 'xhigh'
+
 export const ASPECT_DIMS: Record<AspectRatio, { w: number; h: number }> = {
   square: { w: 512, h: 512 },
   portrait: { w: 384, h: 512 },
@@ -36,6 +45,8 @@ export interface ChatSendRequest {
   stylePreset?: StylePreset
   /** Optional aspect ratio (applied both to prompt and to tile size). */
   aspectRatio?: AspectRatio
+  /** Codex reasoning budget — see {@link ReasoningEffort}. */
+  reasoningEffort?: ReasoningEffort
 }
 
 export interface ChatSendResponse {
