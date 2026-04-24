@@ -104,7 +104,7 @@ async function main(): Promise<void> {
   await app.register(uploadRoutes)
   await app.register(filesRoutes)
 
-  const port = Number(process.env.PORT ?? 5174)
+  const port = Number(process.env.PORT ?? 9999)
   await app.listen({ port, host: '127.0.0.1' })
   app.log.info({ port, home: VISSOR_HOME }, 'vissor server up')
 
