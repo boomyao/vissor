@@ -9,6 +9,7 @@ import type {
   Project,
   ProjectSnapshot,
 } from '@vissor/shared'
+import { probeImageDims } from './imageDims.js'
 import {
   assetPath,
   ensureDirs,
@@ -280,12 +281,33 @@ export async function ingestFile(
   }
   const index = await readAssetsIndex(projectId)
   const existing = index[hash]
-  if (existing) return existing
+  // Probe intrinsic dimensions from the header bytes so the canvas
+  // tile matches the image's real aspect ratio. Falls back to any
+  // explicitly-provided dims; finally undefined if the probe fails.
+  const probed = opts.width && opts.height
+    ? { w: opts.width, h: opts.height }
+    : probeImageDims(buf)
+  // Back-fill dimensions on an already-indexed asset: older entries
+  // were cached without width/height, so the content-hash hit would
+  // otherwise keep serving square tiles forever.
+  if (existing) {
+    if ((!existing.width || !existing.height) && probed) {
+      const updated: Asset = {
+        ...existing,
+        width: probed.w,
+        height: probed.h,
+      }
+      index[hash] = updated
+      await writeAssetsIndex(projectId, index)
+      return updated
+    }
+    return existing
+  }
   const asset: Asset = {
     id: hash,
     mime: opts.mime,
-    width: opts.width,
-    height: opts.height,
+    width: probed?.w,
+    height: probed?.h,
     size: buf.byteLength,
     absPath: dest,
     source: opts.source,

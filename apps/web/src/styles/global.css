@@ -135,6 +135,29 @@ textarea::placeholder {
   }
 }
 
+@keyframes vissor-skeleton-sweep {
+  0% {
+    transform: translateX(-60%);
+  }
+  100% {
+    transform: translateX(160%);
+  }
+}
+.vissor-skeleton-shimmer {
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(
+    100deg,
+    transparent 0%,
+    oklch(0.7 0.19 50 / 0) 30%,
+    oklch(0.7 0.19 50 / 0.22) 50%,
+    oklch(0.7 0.19 50 / 0) 70%,
+    transparent 100%
+  );
+  animation: vissor-skeleton-sweep 1.6s ease-in-out infinite;
+  pointer-events: none;
+}
+
 /* Scrollbar — thin, warm-neutral. */
 ::-webkit-scrollbar {
   width: 10px;

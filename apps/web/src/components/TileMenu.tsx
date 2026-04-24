@@ -1,4 +1,5 @@
 import { useEffect } from 'react'
+import { createPortal } from 'react-dom'
 import type { CanvasItem } from '@vissor/shared'
 import { useStore } from '../store/store.js'
 import { api } from '../lib/api.js'
@@ -126,7 +127,11 @@ export function TileMenu({ item, x, y, onClose }: Props): JSX.Element {
     ? `vissor-${assetId.slice(0, 8)}${extFor(item)}`
     : undefined
 
-  return (
+  // Portal to document.body: without this the menu renders inside the
+  // zoomed/translated world layer, and CSS transforms on an ancestor
+  // reparent `position: fixed` descendants to that ancestor rather than
+  // the viewport — so both scale and x/y would follow the camera.
+  return createPortal(
     <div
       data-tile-menu
       style={{
@@ -142,6 +147,8 @@ export function TileMenu({ item, x, y, onClose }: Props): JSX.Element {
         zIndex: 100,
       }}
       onMouseDown={(e) => e.stopPropagation()}
+      onPointerDown={(e) => e.stopPropagation()}
+      onClick={(e) => e.stopPropagation()}
     >
       <MenuItem
         label={t('tile.duplicate')}
@@ -185,7 +192,8 @@ export function TileMenu({ item, x, y, onClose }: Props): JSX.Element {
       )}
       <div style={{ height: 1, background: 'var(--border)', margin: '4px 0' }} />
       <MenuItem label={t('tile.delete')} destructive onClick={onDelete} />
-    </div>
+    </div>,
+    document.body,
   )
 }
 

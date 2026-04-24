@@ -117,16 +117,16 @@ export function ProjectSwitcher(): JSX.Element {
         <div
           style={{
             position: 'absolute',
-            top: 'calc(100% + 6px)',
+            top: 'calc(100% + 8px)',
             left: 0,
-            minWidth: 260,
-            maxWidth: 340,
-            background: 'var(--bg-elev)',
-            border: '1px solid var(--border)',
-            borderRadius: 'var(--radius)',
+            width: 280,
+            background: 'var(--card)',
+            border: '1px solid var(--line)',
+            borderRadius: 'var(--radius-lg)',
             boxShadow: 'var(--shadow-lg)',
             padding: 6,
             zIndex: 20,
+            fontFamily: 'var(--font-sans)',
           }}
         >
           <div
@@ -135,46 +135,26 @@ export function ProjectSwitcher(): JSX.Element {
               overflow: 'auto',
               display: 'flex',
               flexDirection: 'column',
-              gap: 2,
-              padding: 2,
+              gap: 1,
             }}
           >
-            {projects.map((p) => {
-              const active = p.id === current?.id
-              return (
-                <button
-                  key={p.id}
-                  type="button"
-                  onClick={() => onSwitch(p.id)}
-                  style={{
-                    textAlign: 'left',
-                    padding: '8px 10px',
-                    borderRadius: 6,
-                    border: 'none',
-                    background: active ? 'var(--bg-elev-2)' : 'transparent',
-                    color: 'var(--fg)',
-                    fontSize: 13,
-                    overflow: 'hidden',
-                    textOverflow: 'ellipsis',
-                    whiteSpace: 'nowrap',
-                  }}
-                >
-                  <span style={{ marginRight: 6, color: 'var(--fg-dim)' }}>
-                    {active ? '●' : ' '}
-                  </span>
-                  {p.name}
-                </button>
-              )
-            })}
+            {projects.map((p) => (
+              <ProjectRow
+                key={p.id}
+                active={p.id === current?.id}
+                name={p.name}
+                onClick={() => onSwitch(p.id)}
+              />
+            ))}
           </div>
           <div
             style={{
-              borderTop: '1px solid var(--border)',
+              borderTop: '1px solid var(--line-soft)',
               marginTop: 6,
               paddingTop: 6,
               display: 'flex',
               flexDirection: 'column',
-              gap: 2,
+              gap: 1,
             }}
           >
             <MenuItem onSelect={onNew} label={t('project.new')} />
@@ -201,6 +181,69 @@ export function ProjectSwitcher(): JSX.Element {
   )
 }
 
+function ProjectRow({
+  active,
+  name,
+  onClick,
+}: {
+  active: boolean
+  name: string
+  onClick: () => void
+}): JSX.Element {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      style={{
+        display: 'flex',
+        alignItems: 'center',
+        gap: 8,
+        width: '100%',
+        padding: '8px 10px',
+        borderRadius: 6,
+        border: 'none',
+        background: active ? 'var(--paper-warm)' : 'transparent',
+        color: 'var(--ink)',
+        fontSize: 13,
+        fontWeight: active ? 500 : 400,
+        textAlign: 'left',
+        cursor: 'pointer',
+      }}
+      onMouseEnter={(e) => {
+        if (!active)
+          e.currentTarget.style.background = 'var(--paper-cool)'
+      }}
+      onMouseLeave={(e) => {
+        e.currentTarget.style.background = active
+          ? 'var(--paper-warm)'
+          : 'transparent'
+      }}
+    >
+      <span
+        aria-hidden
+        style={{
+          flex: '0 0 auto',
+          width: 6,
+          height: 6,
+          borderRadius: '50%',
+          background: active ? 'var(--accent)' : 'transparent',
+        }}
+      />
+      <span
+        style={{
+          flex: 1,
+          minWidth: 0,
+          overflow: 'hidden',
+          textOverflow: 'ellipsis',
+          whiteSpace: 'nowrap',
+        }}
+      >
+        {name}
+      </span>
+    </button>
+  )
+}
+
 function MenuItem({
   onSelect,
   label,
@@ -218,13 +261,24 @@ function MenuItem({
       onClick={onSelect}
       disabled={disabled}
       style={{
+        display: 'block',
+        width: '100%',
         textAlign: 'left',
         padding: '8px 10px',
         borderRadius: 6,
         border: 'none',
         background: 'transparent',
-        color: destructive ? 'var(--danger)' : 'var(--fg)',
+        color: destructive ? 'var(--danger)' : 'var(--ink)',
         fontSize: 13,
+        cursor: disabled ? 'default' : 'pointer',
+        opacity: disabled ? 0.45 : 1,
+      }}
+      onMouseEnter={(e) => {
+        if (!disabled)
+          e.currentTarget.style.background = 'var(--paper-cool)'
+      }}
+      onMouseLeave={(e) => {
+        e.currentTarget.style.background = 'transparent'
       }}
     >
       {label}

@@ -196,6 +196,31 @@ export function CanvasTile({ item }: Props): JSX.Element {
           src={api.fileUrl(item.assetId)}
           alt=""
           draggable={false}
+          onLoad={(e) => {
+            // Back-fill tile aspect from the real image when the tile
+            // landed with a fallback (typically a 512-square). Scales
+            // by the current tile's longest side so the fixed happens
+            // in-place without shifting neighbours much.
+            if (item.kind !== 'image') return
+            const img = e.currentTarget
+            const natW = img.naturalWidth
+            const natH = img.naturalHeight
+            if (!natW || !natH) return
+            const tileAspect = item.w / item.h
+            const imgAspect = natW / natH
+            if (Math.abs(tileAspect - imgAspect) < 0.02) return
+            const longest = Math.max(item.w, item.h)
+            const scale = longest / Math.max(natW, natH)
+            const nextW = Math.round(natW * scale)
+            const nextH = Math.round(natH * scale)
+            if (nextW === item.w && nextH === item.h) return
+            patchItem(item.id, { w: nextW, h: nextH })
+            if (project) {
+              void api
+                .patchItem(project.id, item.id, { w: nextW, h: nextH })
+                .catch(() => undefined)
+            }
+          }}
           style={{
             width: '100%',
             height: '100%',

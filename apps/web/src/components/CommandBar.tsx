@@ -1,7 +1,8 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import type { AspectRatio, ReasoningEffort } from '@vissor/shared'
+import type { ReasoningEffort } from '@vissor/shared'
 import { useStore } from '../store/store.js'
 import { api } from '../lib/api.js'
+import { fitCameraTo } from '../lib/camera.js'
 import { useT, type I18nKey } from '../lib/i18n/index.js'
 
 /**
@@ -18,6 +19,8 @@ export function CommandBar(): JSX.Element {
   const attachAsset = useStore((s) => s.attachAsset)
   const detachAsset = useStore((s) => s.detachAsset)
   const clearAttached = useStore((s) => s.clearAttached)
+  const startPendingSkeletons = useStore((s) => s.startPendingSkeletons)
+  const clearPendingSkeletons = useStore((s) => s.clearPendingSkeletons)
   const chat = useStore((s) => s.chat)
   const items = useStore((s) => s.items)
   const selection = useStore((s) => s.selection)
@@ -37,10 +40,9 @@ export function CommandBar(): JSX.Element {
 
   const [text, setText] = useState('')
   const [busyUpload, setBusyUpload] = useState(false)
-  const [variantCount, setVariantCount] = useState<1 | 2 | 4>(2)
-  const [aspectRatio, setAspectRatio] = useState<AspectRatio>('square')
+  const [variantCount, setVariantCount] = useState<1 | 2 | 4>(1)
   const [reasoningEffort, setReasoningEffort] =
-    useState<ReasoningEffort>('high')
+    useState<ReasoningEffort>('low')
   const fileRef = useRef<HTMLInputElement>(null)
   const textAreaRef = useRef<HTMLTextAreaElement>(null)
 
@@ -85,11 +87,17 @@ export function CommandBar(): JSX.Element {
         text: text.trim(),
         attachedAssetIds: finalAttached,
         variantCount,
-        aspectRatio,
         reasoningEffort,
       }
       setText('')
       clearAttached()
+      startPendingSkeletons(turnId, variantCount, undefined)
+      // Frame the newly-laid skeletons so the user's eye lands on the
+      // painting spots rather than hunting across the board for them.
+      const slots = useStore.getState().pendingSkeletons[turnId]
+      if (slots && slots.length) {
+        useStore.getState().setCamera(fitCameraTo(slots))
+      }
       // The server appends the user message and returns it; we optimistically
       // push a local echo so the chat panel paints immediately.
       useStore.setState((s) => ({
@@ -119,6 +127,7 @@ export function CommandBar(): JSX.Element {
       try {
         await api.sendChat(payload)
       } catch (err) {
+        clearPendingSkeletons(turnId)
         useStore.setState((s) => ({
           chat: s.chat.map((m) =>
             m.role === 'agent' && m.turnId === turnId
@@ -130,13 +139,14 @@ export function CommandBar(): JSX.Element {
       }
     },
     [
-      aspectRatio,
       attached,
       canSend,
       clearAttached,
+      clearPendingSkeletons,
       project,
       reasoningEffort,
       selectedImageAssetIds,
+      startPendingSkeletons,
       text,
       variantCount,
     ],
@@ -392,7 +402,6 @@ export function CommandBar(): JSX.Element {
             {busyUpload ? t('command.uploading') : t('command.addImage')}
           </Chip>
           <VariantCountPicker value={variantCount} onChange={setVariantCount} />
-          <AspectPicker value={aspectRatio} onChange={setAspectRatio} />
           <ReasoningPicker
             value={reasoningEffort}
             onChange={setReasoningEffort}
@@ -515,36 +524,6 @@ function VariantCountPicker({
   )
 }
 
-const ASPECT_OPTIONS: { value: AspectRatio; label: string }[] = [
-  { value: 'square', label: '1:1' },
-  { value: 'portrait', label: '3:4' },
-  { value: 'landscape', label: '4:3' },
-  { value: 'wide', label: '16:9' },
-]
-
-function AspectPicker({
-  value,
-  onChange,
-}: {
-  value: AspectRatio
-  onChange: (v: AspectRatio) => void
-}): JSX.Element {
-  const t = useT()
-  const idx = ASPECT_OPTIONS.findIndex((o) => o.value === value)
-  const current = ASPECT_OPTIONS[idx >= 0 ? idx : 0]
-  const next = (): void => {
-    const n = ASPECT_OPTIONS[(idx + 1) % ASPECT_OPTIONS.length]
-    onChange(n.value)
-  }
-  return (
-    <Chip onClick={next} active title={t('command.ratioTitle')}>
-      <span style={{ color: 'var(--ink-dim)', marginRight: 4 }}>
-        {t('command.ratioLabel')}
-      </span>
-      <b style={{ fontWeight: 600, color: 'var(--ink)' }}>{current.label}</b>
-    </Chip>
-  )
-}
 
 const REASONING_OPTIONS: { value: ReasoningEffort; labelKey: I18nKey }[] = [
   { value: 'low', labelKey: 'command.reasoningLow' },

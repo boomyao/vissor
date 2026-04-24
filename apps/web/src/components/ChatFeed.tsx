@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react'
 import type { AspectRatio, ReasoningEffort, StylePreset } from '@vissor/shared'
 import { useStore } from '../store/store.js'
 import { api } from '../lib/api.js'
+import { fitCameraTo } from '../lib/camera.js'
 import { useT } from '../lib/i18n/index.js'
 
 const COLLAPSED_KEY = 'vissor:chatCollapsed'
@@ -244,6 +245,8 @@ function RetryButton({ turnId }: { turnId: string }): JSX.Element | null {
   const project = useStore((s) => s.project)
   const chat = useStore((s) => s.chat)
   const activeTurnId = useStore((s) => s.activeTurnId)
+  const startPendingSkeletons = useStore((s) => s.startPendingSkeletons)
+  const clearPendingSkeletons = useStore((s) => s.clearPendingSkeletons)
 
   // The matching user message carries the original turn inputs.
   const userMsg = chat.find(
@@ -293,9 +296,19 @@ function RetryButton({ turnId }: { turnId: string }): JSX.Element | null {
       ],
       activeTurnId: newTurnId,
     }))
+    startPendingSkeletons(
+      newTurnId,
+      userMsg.variantCount ?? 2,
+      (userMsg.aspectRatio as AspectRatio | undefined) ?? 'square',
+    )
+    const slots = useStore.getState().pendingSkeletons[newTurnId]
+    if (slots && slots.length) {
+      useStore.getState().setCamera(fitCameraTo(slots))
+    }
     try {
       await api.sendChat(payload)
     } catch (err) {
+      clearPendingSkeletons(newTurnId)
       useStore.setState((s) => ({
         chat: s.chat.map((m) =>
           m.role === 'agent' && m.turnId === newTurnId

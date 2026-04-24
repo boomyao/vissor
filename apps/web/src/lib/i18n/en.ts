@@ -70,8 +70,6 @@ const en = {
   'command.iteratingMany': 'Iterating on {n} tiles',
   'command.countLabel': 'count',
   'command.countTitle': 'Variant count — click to cycle',
-  'command.ratioLabel': 'ratio',
-  'command.ratioTitle': 'Aspect ratio — click to cycle',
   'command.reasoningLabel': 'craft',
   'command.reasoningTitle':
     'How much craft Vissor puts into each batch — higher picks the right tools more reliably and makes variants more distinct, at the cost of latency',
@@ -111,6 +109,9 @@ const en = {
   'selection.deleteTitle': 'Delete all selected (Cmd-Z to undo)',
   'selection.clear': 'Clear',
   'selection.clearTitle': 'Clear selection (Esc)',
+
+  // Canvas context menu (empty-area right-click)
+  'canvas.insertImage': 'Insert image…',
 
   // Tile context menu
   'tile.duplicate': 'Duplicate',

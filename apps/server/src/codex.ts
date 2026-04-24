@@ -75,6 +75,18 @@ function validReasoningEffort(v: string | undefined): string | null {
     : null
 }
 
+/** Cap the longest tile side so canvas stays readable regardless of
+ *  the source image's resolution (codex routinely emits 1024+ pixel
+ *  PNGs). Aspect ratio is preserved. */
+const MAX_TILE_SIDE = 512
+
+function clampTileSize(w: number, h: number): { w: number; h: number } {
+  const longest = Math.max(w, h)
+  if (longest <= MAX_TILE_SIDE) return { w, h }
+  const scale = MAX_TILE_SIDE / longest
+  return { w: Math.round(w * scale), h: Math.round(h * scale) }
+}
+
 /** Place a tile on a fresh row below existing content. */
 async function placeNewImageItem(
   projectId: string,
@@ -106,14 +118,15 @@ async function placeNewImageItem(
   const x = siblings.length > 0 ? rowRight + GAP : 0
   const y = rowY
   const now = Date.now()
+  const sized = clampTileSize(width || TILE_W, height || TILE_H)
   const item: CanvasImage = {
     id: randomUUID(),
     kind: 'image',
     assetId,
     x,
     y,
-    w: width || TILE_W,
-    h: height || TILE_H,
+    w: sized.w,
+    h: sized.h,
     z: now,
     turnId,
     variantIndex,

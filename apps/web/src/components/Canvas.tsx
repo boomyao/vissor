@@ -1,6 +1,8 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { useStore } from '../store/store.js'
+import { CanvasMenu } from './CanvasMenu.js'
 import { CanvasTile } from './CanvasTile.js'
+import { Skeletons } from './Skeletons.js'
 import { VariantFrames } from './VariantFrames.js'
 import { api } from '../lib/api.js'
 import { fitCameraTo } from '../lib/camera.js'
@@ -345,6 +347,82 @@ export function Canvas(): JSX.Element {
 
   const [dragOver, setDragOver] = useState(false)
 
+  // Right-click → lightweight menu with "Insert image" — clicking it
+  // opens the native file picker and drops the chosen image(s) at the
+  // click point. Tiles stop propagation on their own onContextMenu,
+  // so this only fires on empty canvas.
+  const fileInputRef = useRef<HTMLInputElement>(null)
+  const pendingDropWorld = useRef<{ x: number; y: number } | null>(null)
+  const [canvasMenu, setCanvasMenu] = useState<{
+    clientX: number
+    clientY: number
+    worldX: number
+    worldY: number
+  } | null>(null)
+
+  const onContextMenu = useCallback((e: React.MouseEvent<HTMLDivElement>) => {
+    const { project, camera } = useStore.getState()
+    if (!project) return
+    e.preventDefault()
+    const rect = rootRef.current?.getBoundingClientRect()
+    if (!rect) return
+    const worldX = (e.clientX - rect.left - camera.x) / camera.scale
+    const worldY = (e.clientY - rect.top - camera.y) / camera.scale
+    setCanvasMenu({
+      clientX: e.clientX,
+      clientY: e.clientY,
+      worldX,
+      worldY,
+    })
+  }, [])
+
+  const onPickInsertImage = useCallback(() => {
+    if (!canvasMenu) return
+    pendingDropWorld.current = { x: canvasMenu.worldX, y: canvasMenu.worldY }
+    setCanvasMenu(null)
+    fileInputRef.current?.click()
+  }, [canvasMenu])
+
+  const onFilesChosen = useCallback(
+    async (files: FileList | null) => {
+      if (!files || files.length === 0) return
+      const imgs = Array.from(files).filter((f) =>
+        f.type.startsWith('image/'),
+      )
+      if (imgs.length === 0) return
+      const target = pendingDropWorld.current
+      pendingDropWorld.current = null
+      const { project } = useStore.getState()
+      if (!project || !target) return
+      try {
+        const dims = await Promise.all(imgs.map(readImageSize))
+        const beforeIds = new Set(useStore.getState().items.map((i) => i.id))
+        const { assets } = await api.upload(project.id, imgs)
+        const GAP = 16
+        let cursorX = target.x
+        for (let i = 0; i < assets.length; i++) {
+          const a = assets[i]
+          const d = dims[i] ?? { w: 320, h: 320 }
+          const scale = Math.min(1, 512 / Math.max(d.w, d.h))
+          const w = Math.round(d.w * scale)
+          const h = Math.round(d.h * scale)
+          await api.placeAsset(project.id, a.id, cursorX, target.y, { w, h })
+          cursorX += w + GAP
+        }
+        setTimeout(() => {
+          const newItems = useStore
+            .getState()
+            .items.filter((i) => !beforeIds.has(i.id))
+          if (newItems.length) pushHistory({ kind: 'add', items: newItems })
+        }, 300)
+      } catch (err) {
+        // eslint-disable-next-line no-alert
+        alert(`Upload failed: ${err}`)
+      }
+    },
+    [],
+  )
+
   const onDragOver = useCallback((e: React.DragEvent<HTMLDivElement>) => {
     if (!e.dataTransfer.types.includes('Files')) return
     e.preventDefault()
@@ -496,6 +574,7 @@ export function Canvas(): JSX.Element {
       onDragOver={onDragOver}
       onDragLeave={onDragLeave}
       onDrop={onDrop}
+      onContextMenu={onContextMenu}
       style={{
         position: 'absolute',
         inset: 0,
@@ -504,6 +583,17 @@ export function Canvas(): JSX.Element {
         touchAction: 'none',
       }}
     >
+      <input
+        ref={fileInputRef}
+        type="file"
+        accept="image/*"
+        multiple
+        hidden
+        onChange={(e) => {
+          void onFilesChosen(e.target.files)
+          if (fileInputRef.current) fileInputRef.current.value = ''
+        }}
+      />
       {/* Grid background — subtle dot pattern in world space. */}
       <div
         aria-hidden
@@ -534,6 +624,7 @@ export function Canvas(): JSX.Element {
           .map((item) => (
             <CanvasTile key={item.id} item={item} />
           ))}
+        <Skeletons />
         <SnapGuides />
       </div>
       {dragOver && (
@@ -583,6 +674,14 @@ export function Canvas(): JSX.Element {
           />
         )
       })()}
+      {canvasMenu && (
+        <CanvasMenu
+          x={canvasMenu.clientX}
+          y={canvasMenu.clientY}
+          onPickInsertImage={onPickInsertImage}
+          onClose={() => setCanvasMenu(null)}
+        />
+      )}
     </div>
   )
 }

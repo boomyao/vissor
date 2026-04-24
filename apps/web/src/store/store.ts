@@ -2,13 +2,32 @@ import { create } from 'zustand'
 import type {
   AgentMessage,
   Asset,
+  AspectRatio,
   CanvasItem,
   ChatMessage,
   ChatStreamEvent,
   Project,
   ProjectSnapshot,
 } from '@vissor/shared'
+import { ASPECT_DIMS } from '@vissor/shared'
 import type { SnapGuide } from '../lib/snap.js'
+
+const TURN_GAP = 24
+
+/**
+ * A client-side placeholder for a variant that codex is still
+ * generating. We paint these on the canvas in the same grid the
+ * server will place the real tiles into, and remove them one-by-one
+ * as real tiles arrive (matched by turnId).
+ */
+export interface SkeletonSlot {
+  turnId: string
+  variantIndex: number
+  x: number
+  y: number
+  w: number
+  h: number
+}
 
 export interface Camera {
   x: number // world offset (pan)
@@ -34,6 +53,12 @@ export interface AppState {
   activeTurnId: string | null
   /** Snap guides rendered while a drag is in progress. */
   activeGuides: SnapGuide[]
+  /**
+   * Client-only placeholders for variants still being painted by
+   * codex. Keyed by turnId, ordered by variant slot. Populated when
+   * the user submits a turn and consumed as real image items land.
+   */
+  pendingSkeletons: Record<string, SkeletonSlot[]>
 
   // --- project loading ---
   setProjects: (list: Project[]) => void
@@ -64,6 +89,15 @@ export interface AppState {
   patchItem: (itemId: string, patch: Partial<CanvasItem>) => void
   setActiveTurn: (turnId: string | null) => void
   setGuides: (guides: SnapGuide[]) => void
+
+  /** Lay down N skeleton slots for an about-to-start turn. */
+  startPendingSkeletons: (
+    turnId: string,
+    count: number,
+    aspectRatio: AspectRatio | undefined,
+  ) => void
+  /** Clear any remaining skeletons for a turn. */
+  clearPendingSkeletons: (turnId: string) => void
 }
 
 function withAgentMessage(
@@ -89,6 +123,7 @@ export const useStore = create<AppState>((set, get) => ({
   drawerAssetId: null,
   activeTurnId: null,
   activeGuides: [],
+  pendingSkeletons: {},
 
   setProjects: (list) => set({ projects: list }),
 
@@ -204,28 +239,50 @@ export const useStore = create<AppState>((set, get) => ({
           return {
             chat: withAgentMessage(s.chat, event.turnId, { text: event.text }),
           }
-        case 'turn.completed':
+        case 'turn.completed': {
+          const { [event.turnId]: _drop, ...restSkeletons } = s.pendingSkeletons
           return {
             activeTurnId: s.activeTurnId === event.turnId ? null : s.activeTurnId,
             chat: withAgentMessage(s.chat, event.turnId, {
               status: 'completed',
               completedAt: Date.now(),
             }),
+            pendingSkeletons: restSkeletons,
           }
-        case 'turn.failed':
+        }
+        case 'turn.failed': {
+          const { [event.turnId]: _drop, ...restSkeletons } = s.pendingSkeletons
           return {
             activeTurnId: s.activeTurnId === event.turnId ? null : s.activeTurnId,
             chat: withAgentMessage(s.chat, event.turnId, {
               status: 'failed',
               error: event.error,
             }),
+            pendingSkeletons: restSkeletons,
           }
+        }
         case 'asset.added':
           return {
             assets: { ...s.assets, [event.asset.id]: event.asset },
           }
-        case 'item.added':
-          return { items: [...s.items, event.item] }
+        case 'item.added': {
+          // Consume one skeleton slot for the turn that produced this
+          // item, so a tile painting in place replaces its placeholder
+          // rather than sitting next to it.
+          const turnId = event.item.turnId
+          let pendingSkeletons = s.pendingSkeletons
+          if (turnId && pendingSkeletons[turnId]?.length) {
+            const next = pendingSkeletons[turnId].slice(1)
+            pendingSkeletons =
+              next.length > 0
+                ? { ...pendingSkeletons, [turnId]: next }
+                : (() => {
+                    const { [turnId]: _drop, ...rest } = pendingSkeletons
+                    return rest
+                  })()
+          }
+          return { items: [...s.items, event.item], pendingSkeletons }
+        }
         case 'item.updated':
           return {
             items: s.items.map((i) =>
@@ -247,6 +304,37 @@ export const useStore = create<AppState>((set, get) => ({
   setActiveTurn: (turnId) => set({ activeTurnId: turnId }),
 
   setGuides: (guides) => set({ activeGuides: guides }),
+
+  startPendingSkeletons: (turnId, count, aspectRatio) =>
+    set((s) => {
+      const n = Math.max(1, Math.min(6, Math.floor(count)))
+      const dims = ASPECT_DIMS[aspectRatio ?? 'square']
+      // Match server-side placeNewImageItem: a new row directly below
+      // everything already on the canvas (turns are row-per-turn).
+      const maxY = s.items.reduce((acc, i) => Math.max(acc, i.y + i.h), 0)
+      const rowY = s.items.length ? maxY + TURN_GAP : 0
+      const slots: SkeletonSlot[] = []
+      for (let i = 0; i < n; i++) {
+        slots.push({
+          turnId,
+          variantIndex: i,
+          x: i * (dims.w + TURN_GAP),
+          y: rowY,
+          w: dims.w,
+          h: dims.h,
+        })
+      }
+      return {
+        pendingSkeletons: { ...s.pendingSkeletons, [turnId]: slots },
+      }
+    }),
+
+  clearPendingSkeletons: (turnId) =>
+    set((s) => {
+      if (!s.pendingSkeletons[turnId]) return s
+      const { [turnId]: _drop, ...rest } = s.pendingSkeletons
+      return { pendingSkeletons: rest }
+    }),
 }))
 
 function clamp(n: number, lo: number, hi: number): number {

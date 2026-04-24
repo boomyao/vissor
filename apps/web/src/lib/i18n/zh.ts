@@ -71,8 +71,6 @@ export const zh: Dict = {
   'command.iteratingMany': '在 {n} 张画面上迭代',
   'command.countLabel': '数量',
   'command.countTitle': '变体数量 — 点击切换',
-  'command.ratioLabel': '比例',
-  'command.ratioTitle': '画面比例 — 点击切换',
   'command.reasoningLabel': '打磨',
   'command.reasoningTitle':
     '每次生成投入多少功夫 — 越高越稳地选到原生 image_gen 工具，变体之间差异更大，代价是更慢',
@@ -112,6 +110,9 @@ export const zh: Dict = {
   'selection.deleteTitle': '删除所有选中项（Cmd-Z 可撤销）',
   'selection.clear': '清除',
   'selection.clearTitle': '清除选择（Esc）',
+
+  // Canvas context menu (empty-area right-click)
+  'canvas.insertImage': '插入图片…',
 
   // Tile context menu
   'tile.duplicate': '复制',

@@ -1,12 +1,12 @@
-import type { CanvasItem } from '@vissor/shared'
 import type { Camera } from '../store/store.js'
 
 /**
- * Pick a camera that frames the given items with some padding. With no
- * items we return the identity camera so the welcome hero renders at 0,0.
+ * Pick a camera that frames the given rects with some padding. With no
+ * rects we return the identity camera so the welcome hero renders at 0,0.
+ * Accepts any shape carrying `x/y/w/h` — tiles, skeleton slots, etc.
  */
 export function fitCameraTo(
-  items: CanvasItem[],
+  items: { x: number; y: number; w: number; h: number }[],
   viewport?: { w: number; h: number },
 ): Camera {
   const vw = viewport?.w ?? window.innerWidth
