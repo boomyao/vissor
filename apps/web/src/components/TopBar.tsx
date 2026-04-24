@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
+import type { AuthUserPublic } from '@vissor/shared'
 import { useStore } from '../store/store.js'
 import { api } from '../lib/api.js'
 import { fitCameraTo } from '../lib/camera.js'
@@ -7,6 +8,11 @@ import { setLocale, useLocale, useT, type Locale } from '../lib/i18n/index.js'
 import type { I18nKey } from '../lib/i18n/index.js'
 import { MiniMap } from './MiniMap.js'
 import { ProjectSwitcher } from './ProjectSwitcher.js'
+
+interface TopBarProps {
+  user: AuthUserPublic
+  onSignOut: () => void
+}
 
 const CANVAS_BG_PRESETS: { labelKey: I18nKey; value: string }[] = [
   { labelKey: 'bg.paper', value: '#f2ede4' },
@@ -38,7 +44,7 @@ function Mark({ size = 18 }: { size?: number }): JSX.Element {
  * floating pill on the right. Doesn't consume layout space so the
  * canvas stays edge-to-edge.
  */
-export function TopBar(): JSX.Element {
+export function TopBar({ user, onSignOut }: TopBarProps): JSX.Element {
   const t = useT()
   const locale = useLocale()
   const scale = useStore((s) => s.camera.scale)
@@ -386,6 +392,7 @@ export function TopBar(): JSX.Element {
             </div>
           )}
         </div>
+        <UserMenu user={user} onSignOut={onSignOut} />
         <PillButton
           onClick={() => {
             window.dispatchEvent(
@@ -397,6 +404,114 @@ export function TopBar(): JSX.Element {
           ?
         </PillButton>
       </div>
+    </div>
+  )
+}
+
+function UserMenu({
+  user,
+  onSignOut,
+}: {
+  user: AuthUserPublic
+  onSignOut: () => void
+}): JSX.Element {
+  const t = useT()
+  const [open, setOpen] = useState(false)
+  const ref = useRef<HTMLDivElement>(null)
+
+  useEffect(() => {
+    if (!open) return
+    const onClick = (e: MouseEvent): void => {
+      if (!ref.current) return
+      if (!ref.current.contains(e.target as Node)) setOpen(false)
+    }
+    document.addEventListener('mousedown', onClick)
+    return () => document.removeEventListener('mousedown', onClick)
+  }, [open])
+
+  const initials = user.username.slice(0, 2).toUpperCase()
+
+  return (
+    <div ref={ref} style={{ position: 'relative' }}>
+      <button
+        type="button"
+        onClick={() => setOpen((v) => !v)}
+        title={t('auth.signedInAs', { name: user.username })}
+        style={{
+          width: 26,
+          height: 26,
+          borderRadius: '50%',
+          background: open ? 'var(--paper-warm)' : 'transparent',
+          border: 'none',
+          color: 'var(--ink)',
+          fontFamily: 'var(--font-mono)',
+          fontSize: 10,
+          fontWeight: 600,
+          cursor: 'pointer',
+          display: 'inline-flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          padding: 0,
+        }}
+      >
+        {initials}
+      </button>
+      {open && (
+        <div
+          style={{
+            position: 'absolute',
+            top: 'calc(100% + 8px)',
+            right: 0,
+            background: 'var(--card)',
+            border: '1px solid var(--line)',
+            borderRadius: 'var(--radius-lg)',
+            boxShadow: 'var(--shadow-lg)',
+            padding: 6,
+            width: 200,
+            zIndex: 20,
+            fontFamily: 'var(--font-sans)',
+          }}
+          onMouseDown={(e) => e.stopPropagation()}
+        >
+          <div
+            className="vissor-meta"
+            style={{
+              padding: '8px 10px 4px',
+              fontSize: 9,
+              letterSpacing: 1.5,
+            }}
+          >
+            {t('auth.signedInAs', { name: user.username })}
+          </div>
+          <button
+            type="button"
+            onClick={() => {
+              setOpen(false)
+              onSignOut()
+            }}
+            style={{
+              display: 'block',
+              width: '100%',
+              textAlign: 'left',
+              padding: '8px 10px',
+              borderRadius: 6,
+              border: 'none',
+              background: 'transparent',
+              color: 'var(--ink)',
+              fontSize: 13,
+              cursor: 'pointer',
+            }}
+            onMouseEnter={(e) =>
+              (e.currentTarget.style.background = 'var(--paper-cool)')
+            }
+            onMouseLeave={(e) =>
+              (e.currentTarget.style.background = 'transparent')
+            }
+          >
+            {t('auth.signOut')}
+          </button>
+        </div>
+      )}
     </div>
   )
 }

@@ -3,6 +3,9 @@ import type {
   ChatSendResponse,
   GetProjectResponse,
   ListProjectsResponse,
+  LoginRequest,
+  LoginResponse,
+  MeResponse,
   Project,
   StylePreset,
   UploadResponse,
@@ -12,7 +15,20 @@ import { Routes } from '@vissor/shared'
 // Re-export for consumers that don't want to import from @vissor/shared directly.
 export type { StylePreset }
 
+export class UnauthorizedError extends Error {
+  constructor() {
+    super('unauthorized')
+    this.name = 'UnauthorizedError'
+  }
+}
+
 async function json<T>(res: Response): Promise<T> {
+  if (res.status === 401) {
+    // Let the top-level auth guard re-probe /me so the app drops into
+    // the login screen instead of surfacing a cryptic error alert.
+    window.dispatchEvent(new CustomEvent('vissor:auth-expired'))
+    throw new UnauthorizedError()
+  }
   if (!res.ok) {
     const body = await res.text().catch(() => '')
     throw new Error(`${res.status} ${res.statusText}: ${body}`)
@@ -150,6 +166,30 @@ export const api = {
   },
 
   fileUrl: (assetId: string): string => Routes.file(assetId),
+
+  // ----- auth -----
+
+  login: async (body: LoginRequest): Promise<LoginResponse> => {
+    const r = await fetch(Routes.authLogin, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+    })
+    if (r.status === 401) {
+      throw new Error('invalid_credentials')
+    }
+    return json<LoginResponse>(r)
+  },
+
+  logout: async (): Promise<void> => {
+    await fetch(Routes.authLogout, { method: 'POST' })
+  },
+
+  me: async (): Promise<MeResponse> => {
+    const r = await fetch(Routes.authMe)
+    if (r.status === 401) return { user: null }
+    return json<MeResponse>(r)
+  },
 
   patchItem: async (
     projectId: string,

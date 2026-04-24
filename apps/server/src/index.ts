@@ -2,13 +2,47 @@ import Fastify from 'fastify'
 import cors from '@fastify/cors'
 import multipart from '@fastify/multipart'
 import type { AgentMessage, ChatMessage } from '@vissor/shared'
+import { attachUser, getUserIdByUsername } from './auth.js'
 import { cancelAllTurns } from './codex.js'
+import { getDb } from './db.js'
 import { cleanScratchOnBoot, ensureDirs, VISSOR_HOME } from './paths.js'
+import { authRoutes } from './routes/auth.js'
 import { projectsRoutes } from './routes/projects.js'
 import { chatRoutes } from './routes/chat.js'
 import { uploadRoutes } from './routes/uploads.js'
 import { filesRoutes } from './routes/files.js'
-import { listProjects, readChat, rewriteChat } from './store.js'
+import {
+  backfillLegacyOwner,
+  listProjects,
+  readChat,
+  rewriteChat,
+} from './store.js'
+
+/**
+ * Pre-auth projects carry no `ownerId`. On boot, if
+ * `VISSOR_LEGACY_OWNER` points to an existing user, adopt every
+ * orphan project under that user. Without it, orphans stay hidden
+ * (invisible to every user, not deleted) until someone sets it.
+ */
+async function migrateLegacyProjects(): Promise<void> {
+  const legacyUsername = process.env.VISSOR_LEGACY_OWNER
+  if (!legacyUsername) return
+  const ownerId = await getUserIdByUsername(legacyUsername)
+  if (!ownerId) {
+    // eslint-disable-next-line no-console
+    console.warn(
+      `[vissor:server] VISSOR_LEGACY_OWNER="${legacyUsername}" is not a known user; skipping legacy-project migration`,
+    )
+    return
+  }
+  const n = await backfillLegacyOwner(ownerId)
+  if (n > 0) {
+    // eslint-disable-next-line no-console
+    console.log(
+      `[vissor:server] assigned ${n} legacy project(s) to "${legacyUsername}"`,
+    )
+  }
+}
 
 /**
  * On startup, any agent message still in `streaming` state is
@@ -39,6 +73,10 @@ async function reconcileStuckTurns(): Promise<void> {
 async function main(): Promise<void> {
   await ensureDirs()
   await cleanScratchOnBoot()
+  // Init SQLite + run migrations before anything touches the auth
+  // layer. Failing here means no login is possible, so crash loudly.
+  await getDb()
+  await migrateLegacyProjects()
   await reconcileStuckTurns()
 
   const app = Fastify({
@@ -53,8 +91,14 @@ async function main(): Promise<void> {
     limits: { fileSize: 25 * 1024 * 1024, files: 10 },
   })
 
+  // Populate req.authUser from the session cookie (if any) for every
+  // request, before route-level guards run. Cheap: one indexed SQLite
+  // lookup. Routes that need a user use `requireAuth` as preHandler.
+  app.addHook('preHandler', attachUser)
+
   app.get('/api/health', async () => ({ ok: true, home: VISSOR_HOME }))
 
+  await app.register(authRoutes)
   await app.register(projectsRoutes)
   await app.register(chatRoutes)
   await app.register(uploadRoutes)

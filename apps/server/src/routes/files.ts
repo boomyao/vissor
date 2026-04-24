@@ -1,14 +1,19 @@
 import type { FastifyInstance } from 'fastify'
 import { createReadStream } from 'node:fs'
 import { stat, readdir } from 'node:fs/promises'
+import { requireAuth } from '../auth.js'
 import { ASSETS_DIR } from '../paths.js'
 import { join } from 'node:path'
 
 /**
  * Serve an asset by id. Assets are stored content-addressed in
- * ASSETS_DIR with the extension the originating file carried.
+ * ASSETS_DIR with the extension the originating file carried. Any
+ * logged-in user may fetch by id; ids are 24-hex sha prefixes so
+ * they're not enumerable in practice.
  */
 export async function filesRoutes(app: FastifyInstance): Promise<void> {
+  app.addHook('preHandler', requireAuth)
+
   app.get<{ Params: { id: string } }>('/api/files/:id', async (req, reply) => {
     const { id } = req.params
     // Asset ids are 24-hex sha prefixes; reject anything else defensively.

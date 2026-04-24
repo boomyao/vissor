@@ -88,7 +88,7 @@ async function readJsonl<T>(path: string): Promise<T[]> {
 
 // ---------- projects ----------
 
-export async function listProjects(): Promise<Project[]> {
+export async function listProjects(ownerId?: string): Promise<Project[]> {
   await ensureDirs()
   let entries: string[]
   try {
@@ -99,19 +99,50 @@ export async function listProjects(): Promise<Project[]> {
   const projects: Project[] = []
   for (const id of entries) {
     const meta = await readJson<Project>(projectMetaPath(id))
-    if (meta) projects.push(meta)
+    if (!meta) continue
+    if (ownerId && meta.ownerId !== ownerId) continue
+    projects.push(meta)
   }
   projects.sort((a, b) => b.updatedAt - a.updatedAt)
   return projects
 }
 
-export async function createProject(name?: string): Promise<Project> {
+/**
+ * One-time back-fill for pre-auth projects that lack an `ownerId`.
+ * Assigns them to the given user so they stay accessible after the
+ * auth migration. If no legacy owner is configured, orphans are left
+ * alone (invisible to every user but not deleted).
+ */
+export async function backfillLegacyOwner(ownerId: string): Promise<number> {
+  await ensureDirs()
+  let entries: string[]
+  try {
+    entries = await readdir(PROJECTS_DIR)
+  } catch {
+    return 0
+  }
+  let n = 0
+  for (const id of entries) {
+    const meta = await readJson<Project>(projectMetaPath(id))
+    if (!meta || meta.ownerId) continue
+    const next: Project = { ...meta, ownerId }
+    await writeJson(projectMetaPath(id), next as unknown as Json)
+    n++
+  }
+  return n
+}
+
+export async function createProject(
+  ownerId: string,
+  name?: string,
+): Promise<Project> {
   await ensureDirs()
   const id = randomUUID()
   const now = Date.now()
   const project: Project = {
     id,
     name: name ?? 'Untitled project',
+    ownerId,
     createdAt: now,
     updatedAt: now,
   }
@@ -139,7 +170,7 @@ export async function duplicateProject(
 ): Promise<Project | null> {
   const source = await getProject(sourceId)
   if (!source) return null
-  const copy = await createProject(`${source.name} (copy)`)
+  const copy = await createProject(source.ownerId, `${source.name} (copy)`)
   // Copy the assets index as-is; asset files are deduped globally.
   const assetsIndex = await readAssetsIndex(sourceId)
   await writeJson(projectAssetsIndexPath(copy.id), assetsIndex as unknown as Json)

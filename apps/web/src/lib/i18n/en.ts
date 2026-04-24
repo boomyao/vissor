@@ -26,6 +26,18 @@ const en = {
   'common.loading': 'Loading workspace…',
   'common.loadFailed': 'Could not load: {error}',
 
+  // Auth
+  'auth.title': 'Vissor',
+  'auth.tagline': 'Sign in to continue',
+  'auth.username': 'Username',
+  'auth.password': 'Password',
+  'auth.signIn': 'Sign in',
+  'auth.signingIn': 'Signing in…',
+  'auth.invalid': 'Wrong username or password',
+  'auth.error': 'Could not reach the server. Try again?',
+  'auth.signOut': 'Sign out',
+  'auth.signedInAs': 'Signed in as {name}',
+
   // Canvas background presets
   'bg.paper': 'Paper',
   'bg.warm': 'Warm',

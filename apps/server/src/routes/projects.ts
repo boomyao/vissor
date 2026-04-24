@@ -8,6 +8,7 @@ import type {
   ListProjectsResponse,
   PlaceAssetRequest,
   PlaceTextRequest,
+  Project,
   RenameProjectRequest,
 } from '@vissor/shared'
 import {
@@ -24,21 +25,42 @@ import {
 } from '../store.js'
 import { projectBus } from '../bus.js'
 import { cancelAndWaitForProjectIdle } from '../codex.js'
+import { requireAuth } from '../auth.js'
+
+/**
+ * Look up a project and verify it belongs to the current user. Returns
+ * the project on success, or null if missing/forbidden. Callers use
+ * `null` as "404" so cross-user access looks indistinguishable from a
+ * missing id.
+ */
+async function loadOwnedProject(
+  id: string,
+  userId: string,
+): Promise<Project | null> {
+  const project = await getProject(id)
+  if (!project || project.ownerId !== userId) return null
+  return project
+}
 
 export async function projectsRoutes(app: FastifyInstance): Promise<void> {
-  app.get('/api/projects', async () => {
-    const projects = await listProjects()
+  // Every /api/projects* endpoint requires an authenticated user.
+  app.addHook('preHandler', requireAuth)
+
+  app.get('/api/projects', async (req) => {
+    const projects = await listProjects(req.authUser!.id)
     return { projects } satisfies ListProjectsResponse
   })
 
   app.post<{ Body: CreateProjectRequest }>('/api/projects', async (req) => {
-    const project = await createProject(req.body?.name)
+    const project = await createProject(req.authUser!.id, req.body?.name)
     return { project }
   })
 
   app.get<{ Params: { id: string } }>(
     '/api/projects/:id',
     async (req, reply) => {
+      const owned = await loadOwnedProject(req.params.id, req.authUser!.id)
+      if (!owned) return reply.code(404).send({ error: 'not_found' })
       const snapshot = await getSnapshot(req.params.id)
       if (!snapshot) return reply.code(404).send({ error: 'not_found' })
       return { snapshot } satisfies GetProjectResponse
@@ -48,6 +70,8 @@ export async function projectsRoutes(app: FastifyInstance): Promise<void> {
   app.patch<{ Params: { id: string }; Body: RenameProjectRequest }>(
     '/api/projects/:id',
     async (req, reply) => {
+      const owned = await loadOwnedProject(req.params.id, req.authUser!.id)
+      if (!owned) return reply.code(404).send({ error: 'not_found' })
       const patch: { name?: string; canvasBg?: string } = {}
       const name = req.body?.name?.trim()
       if (typeof name === 'string' && name.length > 0) patch.name = name
@@ -64,8 +88,8 @@ export async function projectsRoutes(app: FastifyInstance): Promise<void> {
   app.delete<{ Params: { id: string } }>(
     '/api/projects/:id',
     async (req, reply) => {
-      const current = await getProject(req.params.id)
-      if (!current) return reply.code(404).send({ error: 'not_found' })
+      const owned = await loadOwnedProject(req.params.id, req.authUser!.id)
+      if (!owned) return reply.code(404).send({ error: 'not_found' })
       // Cancel any in-flight turn and wait for its finaliser to
       // release resources before we wipe the project dir. Otherwise
       // the finaliser recreates chat.jsonl etc. via ensureProjectDir
@@ -80,6 +104,8 @@ export async function projectsRoutes(app: FastifyInstance): Promise<void> {
   app.post<{ Params: { id: string } }>(
     '/api/projects/:id/duplicate',
     async (req, reply) => {
+      const owned = await loadOwnedProject(req.params.id, req.authUser!.id)
+      if (!owned) return reply.code(404).send({ error: 'not_found' })
       const copy = await duplicateProject(req.params.id)
       if (!copy) return reply.code(404).send({ error: 'not_found' })
       return { project: copy }
@@ -90,8 +116,8 @@ export async function projectsRoutes(app: FastifyInstance): Promise<void> {
   app.get<{ Params: { id: string } }>(
     '/api/projects/:id/stream',
     async (req, reply) => {
-      const project = await getProject(req.params.id)
-      if (!project) return reply.code(404).send({ error: 'not_found' })
+      const owned = await loadOwnedProject(req.params.id, req.authUser!.id)
+      if (!owned) return reply.code(404).send({ error: 'not_found' })
       reply.raw.setHeader('Content-Type', 'text/event-stream')
       reply.raw.setHeader('Cache-Control', 'no-cache, no-transform')
       reply.raw.setHeader('Connection', 'keep-alive')
@@ -136,8 +162,8 @@ export async function projectsRoutes(app: FastifyInstance): Promise<void> {
     '/api/projects/:id/items',
     async (req, reply) => {
       const { id } = req.params
-      const project = await getProject(id)
-      if (!project) return reply.code(404).send({ error: 'not_found' })
+      const owned = await loadOwnedProject(id, req.authUser!.id)
+      if (!owned) return reply.code(404).send({ error: 'not_found' })
       const { assetId, x, y, w, h } = req.body ?? {}
       if (!assetId || typeof x !== 'number' || typeof y !== 'number') {
         return reply.code(400).send({ error: 'bad_request' })
@@ -168,8 +194,8 @@ export async function projectsRoutes(app: FastifyInstance): Promise<void> {
     '/api/projects/:id/items/text',
     async (req, reply) => {
       const { id } = req.params
-      const project = await getProject(id)
-      if (!project) return reply.code(404).send({ error: 'not_found' })
+      const owned = await loadOwnedProject(id, req.authUser!.id)
+      if (!owned) return reply.code(404).send({ error: 'not_found' })
       const { x, y, w, h, text } = req.body ?? {}
       if (typeof x !== 'number' || typeof y !== 'number') {
         return reply.code(400).send({ error: 'bad_request' })
@@ -207,6 +233,8 @@ export async function projectsRoutes(app: FastifyInstance): Promise<void> {
     }
   }>('/api/projects/:id/items/:itemId', async (req, reply) => {
     const { id, itemId } = req.params
+    const owned = await loadOwnedProject(id, req.authUser!.id)
+    if (!owned) return reply.code(404).send({ error: 'not_found' })
     const items = await readItems(id)
     const current = items.find((i) => i.id === itemId)
     if (!current) return reply.code(404).send({ error: 'not_found' })
@@ -221,6 +249,8 @@ export async function projectsRoutes(app: FastifyInstance): Promise<void> {
     '/api/projects/:id/items/:itemId',
     async (req, reply) => {
       const { id, itemId } = req.params
+      const owned = await loadOwnedProject(id, req.authUser!.id)
+      if (!owned) return reply.code(404).send({ error: 'not_found' })
       const items = await readItems(id)
       if (!items.find((i) => i.id === itemId)) {
         return reply.code(404).send({ error: 'not_found' })

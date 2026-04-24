@@ -9,6 +9,9 @@ export type MessageId = string
 export interface Project {
   id: ProjectId
   name: string
+  /** Owning user id. Required for new projects; legacy meta.json files
+   *  without ownerId are migrated at server boot (see auth migration). */
+  ownerId: string
   createdAt: number
   updatedAt: number
   /** Opaque codex thread id, assigned after the first turn. */

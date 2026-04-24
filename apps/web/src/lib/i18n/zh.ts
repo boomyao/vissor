@@ -27,6 +27,18 @@ export const zh: Dict = {
   'common.loading': '正在加载工作区…',
   'common.loadFailed': '加载失败：{error}',
 
+  // Auth
+  'auth.title': 'Vissor',
+  'auth.tagline': '登录后继续',
+  'auth.username': '用户名',
+  'auth.password': '密码',
+  'auth.signIn': '登录',
+  'auth.signingIn': '登录中…',
+  'auth.invalid': '用户名或密码不正确',
+  'auth.error': '无法连接服务器，请稍后再试',
+  'auth.signOut': '退出登录',
+  'auth.signedInAs': '当前账号：{name}',
+
   // Canvas background presets
   'bg.paper': '纸面',
   'bg.warm': '暖色',

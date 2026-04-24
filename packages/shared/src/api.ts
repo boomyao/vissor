@@ -123,6 +123,26 @@ export interface PlaceTextRequest {
   text?: string
 }
 
+// ---------- auth ----------
+
+export interface AuthUserPublic {
+  id: string
+  username: string
+}
+
+export interface LoginRequest {
+  username: string
+  password: string
+}
+
+export interface LoginResponse {
+  user: AuthUserPublic
+}
+
+export interface MeResponse {
+  user: AuthUserPublic | null
+}
+
 export const Routes = {
   projectsList: '/api/projects',
   projectsCreate: '/api/projects',
@@ -133,6 +153,9 @@ export const Routes = {
   projectStream: (id: string) => `/api/projects/${id}/stream`,
   chatSend: '/api/chat',
   chatCancel: '/api/chat/cancel',
+  authLogin: '/api/auth/login',
+  authLogout: '/api/auth/logout',
+  authMe: '/api/auth/me',
   uploads: '/api/uploads',
   file: (assetId: string) => `/api/files/${assetId}`,
   itemsPlace: (projectId: string) => `/api/projects/${projectId}/items`,

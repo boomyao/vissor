@@ -5,10 +5,13 @@ import type {
   ChatSendResponse,
   UserMessage,
 } from '@vissor/shared'
+import { requireAuth } from '../auth.js'
 import { appendUserMessage, cancelTurn, runTurn } from '../codex.js'
 import { getProject, readAssetsIndex } from '../store.js'
 
 export async function chatRoutes(app: FastifyInstance): Promise<void> {
+  app.addHook('preHandler', requireAuth)
+
   app.post<{ Body: ChatSendRequest }>('/api/chat', async (req, reply) => {
     const {
       projectId,
@@ -24,7 +27,9 @@ export async function chatRoutes(app: FastifyInstance): Promise<void> {
       return reply.code(400).send({ error: 'bad_request' })
     }
     const project = await getProject(projectId)
-    if (!project) return reply.code(404).send({ error: 'not_found' })
+    if (!project || project.ownerId !== req.authUser!.id) {
+      return reply.code(404).send({ error: 'not_found' })
+    }
 
     const assets = await readAssetsIndex(projectId)
     const attachedImagePaths: string[] = []
@@ -72,6 +77,10 @@ export async function chatRoutes(app: FastifyInstance): Promise<void> {
       const { projectId, turnId } = req.body ?? {}
       if (!projectId || !turnId) {
         return reply.code(400).send({ error: 'bad_request' })
+      }
+      const project = await getProject(projectId)
+      if (!project || project.ownerId !== req.authUser!.id) {
+        return reply.code(404).send({ error: 'not_found' })
       }
       const canceled = cancelTurn(projectId, turnId)
       return { canceled }
