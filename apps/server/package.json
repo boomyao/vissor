@@ -4,7 +4,7 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "dev": "bun --watch src/index.ts",
+    "dev": "PORT=9998 bun --watch src/index.ts",
     "start": "bun src/index.ts",
     "typecheck": "tsc --noEmit",
     "build": "tsc --noEmit"
@@ -12,6 +12,7 @@
   "dependencies": {
     "@fastify/cors": "^10.0.1",
     "@fastify/multipart": "^9.0.1",
+    "@fastify/static": "^9.1.3",
     "@vissor/shared": "workspace:*",
     "fastify": "^5.1.0"
   },

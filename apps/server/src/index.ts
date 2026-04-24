@@ -1,6 +1,10 @@
 import Fastify from 'fastify'
 import cors from '@fastify/cors'
 import multipart from '@fastify/multipart'
+import fastifyStatic from '@fastify/static'
+import { access } from 'node:fs/promises'
+import { fileURLToPath } from 'node:url'
+import { dirname, join, resolve } from 'node:path'
 import type { AgentMessage, ChatMessage } from '@vissor/shared'
 import { attachUser, getUserIdByUsername } from './auth.js'
 import { cancelAllTurns } from './codex.js'
@@ -17,6 +21,33 @@ import {
   readChat,
   rewriteChat,
 } from './store.js'
+
+/**
+ * Locate the built web SPA. Returns null if nothing is there — dev
+ * mode happily runs without it because Vite serves the frontend on a
+ * separate port. Prefers `VISSOR_WEB_DIST` for deployments where the
+ * server and web dist live in unrelated paths.
+ */
+async function resolveWebDist(): Promise<string | null> {
+  const candidates: string[] = []
+  if (process.env.VISSOR_WEB_DIST) {
+    candidates.push(resolve(process.env.VISSOR_WEB_DIST))
+  }
+  const here = dirname(fileURLToPath(import.meta.url))
+  // apps/server/src -> apps/web/dist
+  candidates.push(resolve(here, '..', '..', 'web', 'dist'))
+  // apps/server/dist -> apps/web/dist (post-tsc compile layout)
+  candidates.push(resolve(here, '..', '..', '..', 'web', 'dist'))
+  for (const dir of candidates) {
+    try {
+      await access(join(dir, 'index.html'))
+      return dir
+    } catch {
+      // try next
+    }
+  }
+  return null
+}
 
 /**
  * Pre-auth projects carry no `ownerId`. On boot, if
@@ -104,9 +135,39 @@ async function main(): Promise<void> {
   await app.register(uploadRoutes)
   await app.register(filesRoutes)
 
-  const port = Number(process.env.PORT ?? 9998)
-  await app.listen({ port, host: '127.0.0.1' })
-  app.log.info({ port, home: VISSOR_HOME }, 'vissor server up')
+  // In production, serve the built web app from the same process so
+  // there's a single public port to expose (e.g. via Cloudflare
+  // Tunnel). The web package emits to `apps/web/dist`; `VISSOR_WEB_DIST`
+  // overrides for non-monorepo layouts. If the build output isn't
+  // there we skip silently so dev (Vite on a separate port) still
+  // works identically.
+  const webDist = await resolveWebDist()
+  if (webDist) {
+    await app.register(fastifyStatic, {
+      root: webDist,
+      prefix: '/',
+      index: ['index.html'],
+      // The SPA owns client-side routing; any non-/api path that
+      // misses a static file should fall through to index.html so
+      // deep links work on refresh.
+      wildcard: false,
+    })
+    app.setNotFoundHandler((req, reply) => {
+      if (req.raw.url?.startsWith('/api/')) {
+        return reply.code(404).send({ error: 'not_found' })
+      }
+      return reply.sendFile('index.html')
+    })
+    app.log.info({ webDist }, 'serving web SPA')
+  }
+
+  const port = Number(process.env.PORT ?? 9999)
+  // Bind to 0.0.0.0 in production so Cloudflare Tunnel (or any other
+  // reverse proxy reaching in from outside 127.0.0.1) can connect.
+  // Keep 127.0.0.1 in dev — Vite already fronts us.
+  const host = process.env.HOST ?? (webDist ? '0.0.0.0' : '127.0.0.1')
+  await app.listen({ port, host })
+  app.log.info({ port, host, home: VISSOR_HOME }, 'vissor server up')
 
   // Graceful shutdown: stop accepting new connections, signal any
   // in-flight codex children to wind down, then exit. If someone
