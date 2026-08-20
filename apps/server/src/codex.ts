@@ -92,6 +92,22 @@ const DEAD_AIR_MS = readPositiveIntEnv(
   'VISSOR_CODEX_DEAD_AIR_MS',
   DEFAULT_DEAD_AIR_MS,
 )
+const MAX_ATTEMPTS = 3
+const RETRY_BACKOFF_MS = [2_000, 8_000]
+const RETRY_BUDGET_MS = readPositiveIntEnv(
+  'VISSOR_CODEX_RETRY_BUDGET_MS',
+  DEAD_AIR_MS + 120_000,
+)
+
+const NON_RETRYABLE_ERROR = [
+  /usage limit/i,
+  /purchase more credits/i,
+  /insufficient[_ ]quota/i,
+  /rate[_ ]limit/i,
+  /not logged in/i,
+  /unauthorized/i,
+  /invalid api key/i,
+]
 
 function readPositiveIntEnv(name: string, fallback: number): number {
   const raw = process.env[name]
@@ -230,6 +246,42 @@ interface AttemptResult {
   errorText: string | undefined
   stalled: boolean
   canceled: boolean
+}
+
+function isRetryableFailure(result: AttemptResult): boolean {
+  if (!result.didFail || result.canceled) return false
+  if (result.variantCount > 0) return false
+  const text = result.errorText ?? ''
+  return !NON_RETRYABLE_ERROR.some((re) => re.test(text))
+}
+
+/**
+ * Sleep between attempts while staying cancellable: the HTTP cancel
+ * route reaches turns through `cancelHandles`, and `runOneAttempt`
+ * clears its entry on exit, so without re-registering here a user who
+ * hits cancel during the backoff would get no response at all.
+ * Resolves true if the wait finished, false if it was cancelled.
+ */
+function waitBeforeRetry(
+  projectId: string,
+  turnId: string,
+  ms: number,
+): Promise<boolean> {
+  return new Promise((resolve) => {
+    let settled = false
+    const finish = (proceeded: boolean): void => {
+      if (settled) return
+      settled = true
+      clearTimeout(timer)
+      const current = cancelHandles.get(projectId)
+      if (current && current.turnId === turnId) {
+        cancelHandles.delete(projectId)
+      }
+      resolve(proceeded)
+    }
+    const timer = setTimeout(() => finish(true), ms)
+    cancelHandles.set(projectId, { turnId, cancel: () => finish(false) })
+  })
 }
 
 async function runTurnInner(params: RunTurnParams): Promise<void> {
@@ -378,16 +430,15 @@ async function runTurnCore({
   //    fires) and produced nothing, that's almost always an OpenAI
   //    upstream hiccup — retry once, transparently, using the session
   //    id captured above so we don't resume a broken thread.
-  const MAX_ATTEMPTS = 2
+  // Retry any zero-image failure — covers both "silent stall" and
+  // "codex picked the wrong tool and claimed success". Three things
+  // stop us: a failure that retrying cannot fix (quota, auth), having
+  // produced at least one image (keep what we got), and the elapsed
+  // budget — a dead-air stall already burned DEAD_AIR_MS, so retrying
+  // it indefinitely would leave the user waiting many minutes.
+  const turnStartedAt = Date.now()
   let lastResult: AttemptResult | null = null
   for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
-    if (attempt > 1) {
-      projectBus.publish(projectId, {
-        kind: 'turn.status',
-        turnId,
-        statusLine: `Upstream hiccup — retrying (attempt ${attempt} of ${MAX_ATTEMPTS})…`,
-      })
-    }
     lastResult = await runOneAttempt({
       projectId,
       turnId,
@@ -399,15 +450,40 @@ async function runTurnCore({
       aspectRatio,
     })
     if (lastResult.canceled) break
-    // Retry on any zero-image failure — covers both "silent stall"
-    // and "codex picked the wrong tool and claimed success" cases. If
-    // codex produced at least one image, keep what we got.
-    const retryable = lastResult.didFail && lastResult.variantCount === 0
-    if (!retryable) break
+    if (!isRetryableFailure(lastResult)) break
     if (attempt >= MAX_ATTEMPTS) break
+    const elapsed = Date.now() - turnStartedAt
+    if (elapsed >= RETRY_BUDGET_MS) {
+      console.error(
+        `[codex:${projectId}] retry budget spent (${Math.round(elapsed / 1000)}s) — giving up after attempt ${attempt}`,
+      )
+      break
+    }
+    const backoffMs =
+      RETRY_BACKOFF_MS[attempt - 1] ??
+      RETRY_BACKOFF_MS[RETRY_BACKOFF_MS.length - 1]
     console.error(
-      `[codex:${projectId}] attempt ${attempt} produced 0 images (${lastResult.errorText}) — retrying`,
+      `[codex:${projectId}] attempt ${attempt} produced 0 images (${lastResult.errorText}) — retrying in ${backoffMs}ms`,
     )
+    projectBus.publish(projectId, {
+      kind: 'turn.status',
+      turnId,
+      statusLine: `Upstream failed — retrying in ${Math.round(backoffMs / 1000)}s (attempt ${attempt + 1} of ${MAX_ATTEMPTS})…`,
+    })
+    const proceeded = await waitBeforeRetry(projectId, turnId, backoffMs)
+    if (!proceeded) {
+      lastResult = {
+        ...lastResult,
+        canceled: true,
+        errorText: 'Canceled by user.',
+      }
+      break
+    }
+    projectBus.publish(projectId, {
+      kind: 'turn.status',
+      turnId,
+      statusLine: `Retrying (attempt ${attempt + 1} of ${MAX_ATTEMPTS})…`,
+    })
   }
   const result = lastResult!
 
