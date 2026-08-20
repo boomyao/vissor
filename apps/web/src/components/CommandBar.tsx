@@ -42,7 +42,7 @@ export function CommandBar(): JSX.Element {
   const [busyUpload, setBusyUpload] = useState(false)
   const [variantCount, setVariantCount] = useState<1 | 2 | 4>(1)
   const [reasoningEffort, setReasoningEffort] =
-    useState<ReasoningEffort>('low')
+    useState<ReasoningEffort>('high')
   const fileRef = useRef<HTMLInputElement>(null)
   const textAreaRef = useRef<HTMLTextAreaElement>(null)
 

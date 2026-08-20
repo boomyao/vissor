@@ -75,6 +75,9 @@ function validReasoningEffort(v: string | undefined): string | null {
     : null
 }
 
+const CODEX_MODEL = process.env.VISSOR_CODEX_MODEL ?? 'gpt-5.6-sol'
+const CODEX_SERVICE_TIER = process.env.VISSOR_CODEX_SERVICE_TIER ?? 'fast'
+
 /** Cap the longest tile side so canvas stays readable regardless of
  *  the source image's resolution (codex routinely emits 1024+ pixel
  *  PNGs). Aspect ratio is preserved. */
@@ -334,6 +337,10 @@ async function runTurnCore({
     '--json',
     '--dangerously-bypass-approvals-and-sandbox',
     '--skip-git-repo-check',
+    '-c',
+    `model="${CODEX_MODEL}"`,
+    '-c',
+    `service_tier="${CODEX_SERVICE_TIER}"`,
     ...effortArgs,
     ...imageArgs,
   ]
