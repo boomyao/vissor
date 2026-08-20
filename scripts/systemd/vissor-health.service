@@ -1,0 +1,9 @@
+[Unit]
+Description=Vissor health probe
+After=vissor.service
+
+[Service]
+Type=oneshot
+Environment=PATH=/home/boomyao/.bun/bin:/home/boomyao/bin:/usr/local/bin:/usr/bin:/bin
+Environment=PORT=9999
+ExecStart=/home/boomyao/projects/vissor/scripts/healthcheck.sh

@@ -1,0 +1,11 @@
+[Unit]
+Description=Probe vissor every two minutes
+
+[Timer]
+OnBootSec=3min
+OnUnitActiveSec=2min
+AccuracySec=15s
+Unit=vissor-health.service
+
+[Install]
+WantedBy=timers.target

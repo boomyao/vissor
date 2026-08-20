@@ -1,0 +1,26 @@
+[Unit]
+Description=Vissor web app
+After=network-online.target
+Wants=network-online.target
+StartLimitIntervalSec=60
+StartLimitBurst=5
+
+[Service]
+Type=simple
+WorkingDirectory=/home/boomyao/projects/vissor
+Environment=BUN_INSTALL=/home/boomyao/.bun
+Environment=PATH=/home/boomyao/.bun/bin:/home/boomyao/bin:/usr/local/bin:/usr/bin:/bin
+Environment=NODE_ENV=production
+Environment=HOST=127.0.0.1
+Environment=PORT=9999
+Environment=VISSOR_HOME=/home/boomyao/.vissor
+Environment=VISSOR_CODEX_PATH=/home/boomyao/bin/codex-via-bun
+Environment=VISSOR_CODEX_DEAD_AIR_MS=600000
+ExecStart=/home/boomyao/.bun/bin/bun run --filter @vissor/server start
+Restart=always
+RestartSec=5
+TimeoutStopSec=10
+KillSignal=SIGTERM
+
+[Install]
+WantedBy=default.target
