@@ -17,6 +17,9 @@ import { pushHistory } from '../lib/history.js'
  *   - Space+drag OR middle-button-drag = pan (same as Figma)
  *   - Mousewheel = zoom (pinch on trackpad = zoom; two-finger drag = pan)
  *   - Click empty space = clear selection
+ *   - Touch: two fingers = pinch-zoom + pan, one finger on empty
+ *     canvas = pan. Touch never produces wheel events, so without the
+ *     explicit handler below a touch device has no way to zoom at all.
  */
 export function Canvas(): JSX.Element {
   const camera = useStore((s) => s.camera)
@@ -28,6 +31,7 @@ export function Canvas(): JSX.Element {
 
   const rootRef = useRef<HTMLDivElement>(null)
   const spaceDown = useRef(false)
+  const pinching = useRef(false)
   const dragging = useRef(false)
   const last = useRef<{ x: number; y: number } | null>(null)
   type MarqueeState = {
@@ -230,10 +234,73 @@ export function Canvas(): JSX.Element {
     return () => el.removeEventListener('wheel', handler)
   }, [])
 
+  // Pinch-zoom. Listens for raw touch events in the capture phase so
+  // the gesture still works when a tile has captured the pointer, and
+  // so it can cancel any pan/marquee the first finger already began.
+  useEffect(() => {
+    const el = rootRef.current
+    if (!el) return
+    let prev: { dist: number; cx: number; cy: number } | null = null
+
+    const spread = (t: TouchList) => {
+      const dx = t[0].clientX - t[1].clientX
+      const dy = t[0].clientY - t[1].clientY
+      return {
+        dist: Math.hypot(dx, dy),
+        cx: (t[0].clientX + t[1].clientX) / 2,
+        cy: (t[0].clientY + t[1].clientY) / 2,
+      }
+    }
+
+    const onStart = (e: TouchEvent) => {
+      if (e.touches.length < 2) return
+      prev = spread(e.touches)
+      pinching.current = true
+      dragging.current = false
+      last.current = null
+      setMarquee(null)
+    }
+
+    const onMove = (e: TouchEvent) => {
+      if (e.touches.length < 2 || !prev) return
+      e.preventDefault()
+      const next = spread(e.touches)
+      if (prev.dist > 0 && next.dist > 0) {
+        zoomAt(next.cx, next.cy, next.dist / prev.dist)
+      }
+      panBy(next.cx - prev.cx, next.cy - prev.cy)
+      prev = next
+    }
+
+    const onEnd = (e: TouchEvent) => {
+      if (e.touches.length >= 2) return
+      prev = null
+      // Leave the guard up until every finger is off, otherwise the
+      // remaining finger resumes as a pan and the board lurches.
+      if (e.touches.length === 0) pinching.current = false
+    }
+
+    const opts = { passive: false, capture: true } as const
+    el.addEventListener('touchstart', onStart, opts)
+    el.addEventListener('touchmove', onMove, opts)
+    el.addEventListener('touchend', onEnd, { capture: true })
+    el.addEventListener('touchcancel', onEnd, { capture: true })
+    return () => {
+      el.removeEventListener('touchstart', onStart, opts)
+      el.removeEventListener('touchmove', onMove, opts)
+      el.removeEventListener('touchend', onEnd, { capture: true })
+      el.removeEventListener('touchcancel', onEnd, { capture: true })
+    }
+  }, [zoomAt, panBy, setMarquee])
+
   const onPointerDown = useCallback(
     (e: React.PointerEvent<HTMLDivElement>) => {
+      if (pinching.current) return
       const targetIsEmpty = e.target === e.currentTarget
-      const canPan = spaceDown.current || e.button === 1
+      // On touch, dragging empty canvas should move the board rather
+      // than open a marquee — matches every other touch map/canvas.
+      const touchPan = e.pointerType === 'touch' && targetIsEmpty
+      const canPan = spaceDown.current || e.button === 1 || touchPan
       if (canPan) {
         e.preventDefault()
         dragging.current = true
@@ -265,6 +332,7 @@ export function Canvas(): JSX.Element {
 
   const onPointerMove = useCallback(
     (e: React.PointerEvent<HTMLDivElement>) => {
+      if (pinching.current) return
       if (dragging.current && last.current) {
         const dx = e.clientX - last.current.x
         const dy = e.clientY - last.current.y

@@ -97,6 +97,33 @@ select {
   border: none;
   outline: none;
 }
+
+/* Keyboard focus. `outline: none` above kills the UA ring for text
+   fields, and buttons never had one, so without this a keyboard user
+   cannot tell what is focused. :focus-visible keeps mouse clicks
+   clean. */
+:focus-visible,
+button:focus-visible,
+textarea:focus-visible,
+input:focus-visible,
+select:focus-visible,
+summary:focus-visible,
+[tabindex]:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+  border-radius: var(--radius-sm);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}
 input::placeholder,
 textarea::placeholder {
   color: var(--ink-faint);

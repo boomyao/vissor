@@ -99,6 +99,10 @@ export const zh: Dict = {
   'chat.agent': '助手',
   'chat.statusThinking': '思考中',
   'chat.statusFailed': '· 失败',
+  'command.removeAttachment': '移除这张参考图',
+  'chat.attachedImage': '本条消息附带的参考图',
+  'canvas.region': '画布',
+
   'fail.quota': 'Codex 额度已用尽。可前往 chatgpt.com/codex/settings/usage 购买，或等配额重置后再试。',
   'fail.auth': '服务器上的 codex 未登录或凭据已失效，需要重新登录后再重试。',
   'fail.upstream': '与 OpenAI 的连接中断，已自动重试过。这类故障通常几分钟内自行恢复，稍后再重试即可。',

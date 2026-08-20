@@ -3,6 +3,7 @@ import type { AuthUserPublic } from '@vissor/shared'
 import { useStore } from '../store/store.js'
 import { api } from '../lib/api.js'
 import { fitCameraTo } from '../lib/camera.js'
+import { useIsNarrow } from '../lib/useIsNarrow.js'
 import { exportProjectAsZip } from '../lib/exportProject.js'
 import { setLocale, useLocale, useT, type Locale } from '../lib/i18n/index.js'
 import type { I18nKey } from '../lib/i18n/index.js'
@@ -46,6 +47,7 @@ function Mark({ size = 18 }: { size?: number }): JSX.Element {
  */
 export function TopBar({ user, onSignOut }: TopBarProps): JSX.Element {
   const t = useT()
+  const narrow = useIsNarrow()
   const locale = useLocale()
   const scale = useStore((s) => s.camera.scale)
   const setCamera = useStore((s) => s.setCamera)
@@ -120,9 +122,10 @@ export function TopBar({ user, onSignOut }: TopBarProps): JSX.Element {
     <div
       style={{
         position: 'absolute',
-        top: 16,
-        left: 20,
-        right: 20,
+        top: narrow ? 8 : 16,
+        left: narrow ? 8 : 20,
+        right: narrow ? 8 : 20,
+        gap: 8,
         display: 'flex',
         justifyContent: 'space-between',
         alignItems: 'center',
@@ -135,7 +138,8 @@ export function TopBar({ user, onSignOut }: TopBarProps): JSX.Element {
           pointerEvents: 'auto',
           display: 'flex',
           alignItems: 'center',
-          gap: 10,
+          gap: narrow ? 6 : 10,
+          minWidth: 0,
           background: 'var(--card)',
           border: '1px solid var(--line)',
           borderRadius: 'var(--radius)',
@@ -145,25 +149,29 @@ export function TopBar({ user, onSignOut }: TopBarProps): JSX.Element {
         }}
       >
         <Mark />
-        <span
-          style={{
-            fontFamily: 'var(--font-serif)',
-            fontSize: 17,
-            lineHeight: 1,
-            color: 'var(--ink)',
-          }}
-        >
-          Vissor
-        </span>
-        <span
-          aria-hidden
-          style={{
-            width: 1,
-            height: 14,
-            background: 'var(--line)',
-            margin: '0 2px',
-          }}
-        />
+        {!narrow && (
+          <>
+            <span
+              style={{
+                fontFamily: 'var(--font-serif)',
+                fontSize: 17,
+                lineHeight: 1,
+                color: 'var(--ink)',
+              }}
+            >
+              Vissor
+            </span>
+            <span
+              aria-hidden
+              style={{
+                width: 1,
+                height: 14,
+                background: 'var(--line)',
+                margin: '0 2px',
+              }}
+            />
+          </>
+        )}
         <ProjectSwitcher />
       </div>
 
@@ -183,26 +191,33 @@ export function TopBar({ user, onSignOut }: TopBarProps): JSX.Element {
           boxShadow: 'var(--shadow-sm)',
         }}
       >
-        <span
-          style={{
-            padding: '0 10px',
-            color: 'var(--ink)',
-            fontFamily: 'var(--font-mono)',
-          }}
-        >
-          {Math.round(scale * 100)}%
-        </span>
-        <span
-          aria-hidden
-          style={{ width: 1, height: 14, background: 'var(--line)', margin: '0 2px' }}
-        />
+        {!narrow && (
+          <>
+            <span
+              style={{
+                padding: '0 10px',
+                color: 'var(--ink)',
+                fontFamily: 'var(--font-mono)',
+              }}
+            >
+              {Math.round(scale * 100)}%
+            </span>
+            <span
+              aria-hidden
+              style={{ width: 1, height: 14, background: 'var(--line)', margin: '0 2px' }}
+            />
+          </>
+        )}
         <PillButton
           onClick={() => setCamera(fitCameraTo(items))}
           title={t('common.fitTitle')}
         >
           {t('common.fit')}
         </PillButton>
-        <div ref={mapBtnRef} style={{ position: 'relative' }}>
+        <div
+          ref={mapBtnRef}
+          style={{ position: 'relative', display: narrow ? 'none' : undefined }}
+        >
           <PillButton
             onClick={() => setMapOpen((v) => !v)}
             disabled={items.length === 0}
@@ -230,7 +245,10 @@ export function TopBar({ user, onSignOut }: TopBarProps): JSX.Element {
             </div>
           )}
         </div>
-        <div ref={bgBtnRef} style={{ position: 'relative' }}>
+        <div
+          ref={bgBtnRef}
+          style={{ position: 'relative', display: narrow ? 'none' : undefined }}
+        >
           <PillButton
             onClick={() => setBgOpen((v) => !v)}
             disabled={!project}
@@ -335,7 +353,10 @@ export function TopBar({ user, onSignOut }: TopBarProps): JSX.Element {
         >
           {exporting ? t('common.exporting') : t('common.export')}
         </button>
-        <div ref={langBtnRef} style={{ position: 'relative' }}>
+        <div
+          ref={langBtnRef}
+          style={{ position: 'relative', display: narrow ? 'none' : undefined }}
+        >
           <PillButton
             onClick={() => setLangOpen((v) => !v)}
             active={langOpen}
@@ -393,16 +414,18 @@ export function TopBar({ user, onSignOut }: TopBarProps): JSX.Element {
           )}
         </div>
         <UserMenu user={user} onSignOut={onSignOut} />
-        <PillButton
-          onClick={() => {
-            window.dispatchEvent(
-              new KeyboardEvent('keydown', { key: '?', bubbles: true }),
-            )
-          }}
-          title={t('common.shortcutsTitle')}
-        >
-          ?
-        </PillButton>
+        {!narrow && (
+          <PillButton
+            onClick={() => {
+              window.dispatchEvent(
+                new KeyboardEvent('keydown', { key: '?', bubbles: true }),
+              )
+            }}
+            title={t('common.shortcutsTitle')}
+          >
+            ?
+          </PillButton>
+        )}
       </div>
     </div>
   )

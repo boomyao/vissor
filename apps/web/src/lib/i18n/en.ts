@@ -98,6 +98,10 @@ const en = {
   'chat.agent': 'Agent',
   'chat.statusThinking': 'Thinking',
   'chat.statusFailed': '· failed',
+  'command.removeAttachment': 'Remove this reference image',
+  'chat.attachedImage': 'Reference image attached to this message',
+  'canvas.region': 'Canvas',
+
   'fail.quota': 'Codex credit is used up. Buy more at chatgpt.com/codex/settings/usage, or wait for the quota to reset.',
   'fail.auth': 'Codex is not signed in on the server. Sign in again there, then retry.',
   'fail.upstream': 'The connection to OpenAI dropped. Vissor already retried automatically. These clear up within a few minutes — retry then.',

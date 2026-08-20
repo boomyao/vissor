@@ -4,6 +4,7 @@ import { useStore } from '../store/store.js'
 import { api } from '../lib/api.js'
 import { fitCameraTo } from '../lib/camera.js'
 import { useT, type I18nKey } from '../lib/i18n/index.js'
+import { useIsNarrow } from '../lib/useIsNarrow.js'
 
 /**
  * Bottom floating command bar. Holds the prompt textarea, attached
@@ -12,6 +13,7 @@ import { useT, type I18nKey } from '../lib/i18n/index.js'
  */
 export function CommandBar(): JSX.Element {
   const t = useT()
+  const narrow = useIsNarrow()
   const project = useStore((s) => s.project)
   const assets = useStore((s) => s.assets)
   const attached = useStore((s) => s.attachedAssetIds)
@@ -221,14 +223,14 @@ export function CommandBar(): JSX.Element {
       onSubmit={onSubmit}
       style={{
         position: 'absolute',
-        bottom: 24,
+        bottom: narrow ? 10 : 24,
         left: '50%',
         transform: 'translateX(-50%)',
-        width: 'min(820px, calc(100vw - 64px))',
+        width: narrow ? 'calc(100vw - 16px)' : 'min(820px, calc(100vw - 64px))',
         background: 'var(--card)',
         border: '1px solid var(--line)',
         borderRadius: 'var(--radius-xl)',
-        padding: 14,
+        padding: narrow ? 10 : 14,
         boxShadow: 'var(--shadow-lg)',
         display: 'flex',
         flexDirection: 'column',
@@ -332,7 +334,8 @@ export function CommandBar(): JSX.Element {
                 <button
                   type="button"
                   onClick={() => detachAsset(id)}
-                  title="Remove"
+                  title={t('command.removeAttachment')}
+                  aria-label={t('command.removeAttachment')}
                   style={{
                     position: 'absolute',
                     top: -6,
@@ -380,9 +383,18 @@ export function CommandBar(): JSX.Element {
           display: 'flex',
           justifyContent: 'space-between',
           alignItems: 'center',
+          gap: 8,
         }}
       >
-        <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
+        <div
+          style={{
+            display: 'flex',
+            gap: 6,
+            alignItems: 'center',
+            minWidth: 0,
+            overflowX: 'auto',
+          }}
+        >
           <input
             ref={fileRef}
             type="file"
@@ -407,8 +419,10 @@ export function CommandBar(): JSX.Element {
             onChange={setReasoningEffort}
           />
         </div>
-        <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
-          {!activeTurnId && (
+        <div
+          style={{ display: 'flex', gap: 8, alignItems: 'center', flex: 'none' }}
+        >
+          {!activeTurnId && !narrow && (
             <span
               className="vissor-meta"
               style={{ letterSpacing: 1, marginRight: 2 }}
@@ -422,7 +436,8 @@ export function CommandBar(): JSX.Element {
               onClick={() => void onCancel()}
               style={{
                 height: 36,
-                padding: '0 22px',
+                padding: narrow ? '0 14px' : '0 22px',
+                whiteSpace: 'nowrap',
                 background: 'var(--card)',
                 border: '1px solid var(--ink)',
                 borderRadius: 'var(--radius)',
@@ -441,7 +456,8 @@ export function CommandBar(): JSX.Element {
               disabled={!canSend}
               style={{
                 height: 36,
-                padding: '0 22px',
+                padding: narrow ? '0 14px' : '0 22px',
+                whiteSpace: 'nowrap',
                 background: canSend ? 'var(--ink)' : 'var(--paper-warm)',
                 border: `1px solid ${canSend ? 'var(--ink)' : 'var(--line)'}`,
                 borderRadius: 'var(--radius)',
@@ -487,6 +503,8 @@ function Chip({
         padding: '0 10px',
         fontFamily: 'var(--font-sans)',
         fontSize: 12,
+        whiteSpace: 'nowrap',
+        flex: 'none',
         background: active ? 'var(--paper-warm)' : 'transparent',
         color: active ? 'var(--ink)' : 'var(--ink-dim)',
         border: `1px solid ${active ? 'var(--ink)' : 'var(--line)'}`,

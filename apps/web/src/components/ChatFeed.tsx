@@ -9,6 +9,7 @@ import { useStore } from '../store/store.js'
 import { api } from '../lib/api.js'
 import { fitCameraTo } from '../lib/camera.js'
 import { useT, type I18nKey } from '../lib/i18n/index.js'
+import { useIsNarrow } from '../lib/useIsNarrow.js'
 
 const COLLAPSED_KEY = 'vissor:chatCollapsed'
 
@@ -18,6 +19,7 @@ const COLLAPSED_KEY = 'vissor:chatCollapsed'
  */
 export function ChatFeed(): JSX.Element | null {
   const t = useT()
+  const narrow = useIsNarrow()
   const chat = useStore((s) => s.chat)
   const scrollRef = useRef<HTMLDivElement>(null)
   const [collapsed, setCollapsed] = useState<boolean>(
@@ -47,8 +49,8 @@ export function ChatFeed(): JSX.Element | null {
         title={t('chat.show')}
         style={{
           position: 'absolute',
-          bottom: 120,
-          right: 12,
+          bottom: narrow ? 96 : 120,
+          right: narrow ? 8 : 12,
           background: 'var(--card)',
           border: '1px solid var(--line)',
           borderRadius: 999,
@@ -86,10 +88,10 @@ export function ChatFeed(): JSX.Element | null {
     <div
       style={{
         position: 'absolute',
-        bottom: 120,
-        right: 12,
-        width: 320,
-        maxHeight: 'calc(100vh - 220px)',
+        bottom: narrow ? 96 : 120,
+        right: narrow ? 8 : 12,
+        width: narrow ? 'calc(100vw - 16px)' : 320,
+        maxHeight: narrow ? 'min(38vh, 300px)' : 'calc(100vh - 220px)',
         background: 'var(--card)',
         border: '1px solid var(--line)',
         borderRadius: 'var(--radius-lg)',
@@ -205,7 +207,7 @@ export function ChatFeed(): JSX.Element | null {
                   <img
                     key={id}
                     src={api.fileUrl(id)}
-                    alt=""
+                    alt={t('chat.attachedImage')}
                     style={{
                       width: 36,
                       height: 36,
