@@ -1,6 +1,6 @@
 // Wire types for the HTTP/SSE API.
 
-import type { Asset, CanvasItem, ChatMessage, Project, ProjectSnapshot, TurnId } from './types.js'
+import type { AgentErrorKind, Asset, CanvasItem, ChatMessage, Project, ProjectSnapshot, TurnId } from './types.js'
 
 /** Built-in style presets selectable from the command bar. */
 export type StylePreset =
@@ -62,7 +62,12 @@ export type ChatStreamEvent =
   | { kind: 'turn.text.delta'; turnId: TurnId; delta: string }
   | { kind: 'turn.text.final'; turnId: TurnId; text: string }
   | { kind: 'turn.completed'; turnId: TurnId }
-  | { kind: 'turn.failed'; turnId: TurnId; error: string }
+  | {
+      kind: 'turn.failed'
+      turnId: TurnId
+      error: string
+      errorKind?: AgentErrorKind
+    }
   | { kind: 'asset.added'; asset: Asset }
   | { kind: 'item.added'; item: CanvasItem }
   | { kind: 'item.updated'; item: CanvasItem }

@@ -99,6 +99,22 @@ export interface UserMessage {
   createdAt: number
 }
 
+/**
+ * Coarse cause of a failed turn. The raw `error` string comes straight
+ * from codex and is meant for logs; this is what the UI maps to an
+ * actionable message.
+ */
+export type AgentErrorKind =
+  | 'canceled'
+  | 'quota'
+  | 'auth'
+  | 'upstream'
+  | 'no-output'
+  | 'crashed'
+  | 'interrupted'
+  | 'internal'
+  | 'unknown'
+
 export interface AgentMessage {
   id: MessageId
   role: 'agent'
@@ -112,6 +128,7 @@ export interface AgentMessage {
   /** Items the agent attached to this turn — canvas ids, not inlined. */
   producedItemIds: ItemId[]
   error?: string
+  errorKind?: AgentErrorKind
   createdAt: number
   completedAt?: number
 }

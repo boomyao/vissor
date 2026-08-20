@@ -3,6 +3,7 @@ import { randomUUID } from 'node:crypto'
 import { mkdir, readdir, rm, stat } from 'node:fs/promises'
 import { extname, join } from 'node:path'
 import type {
+  AgentErrorKind,
   AgentMessage,
   CanvasImage,
   CanvasItem,
@@ -248,6 +249,30 @@ interface AttemptResult {
   canceled: boolean
 }
 
+function classifyFailure(
+  errorText: string | undefined,
+  canceled: boolean,
+): AgentErrorKind {
+  if (canceled) return 'canceled'
+  const t = errorText ?? ''
+  if (!t) return 'unknown'
+  if (/usage limit|purchase more credits|insufficient[_ ]quota|rate[_ ]limit/i.test(t)) {
+    return 'quota'
+  }
+  if (/not logged in|unauthorized|invalid api key|authentication/i.test(t)) {
+    return 'auth'
+  }
+  if (/stalled|no response from codex|disconnect|websocket|stream|reconnecting|upstream/i.test(t)) {
+    return 'upstream'
+  }
+  if (/without producing any images|produced no output/i.test(t)) {
+    return 'no-output'
+  }
+  if (/exited with code|was terminated/i.test(t)) return 'crashed'
+  if (/^internal error/i.test(t)) return 'internal'
+  return 'unknown'
+}
+
 function isRetryableFailure(result: AttemptResult): boolean {
   if (!result.didFail || result.canceled) return false
   if (result.variantCount > 0) return false
@@ -343,6 +368,7 @@ async function runTurnInner(params: RunTurnParams): Promise<void> {
             ...m,
             status: 'failed',
             error: `Internal error: ${msg}`,
+            errorKind: 'internal',
             completedAt: Date.now(),
           } satisfies AgentMessage
         })
@@ -351,6 +377,7 @@ async function runTurnInner(params: RunTurnParams): Promise<void> {
           kind: 'turn.failed',
           turnId,
           error: `Internal error: ${msg}`,
+          errorKind: 'internal',
         })
       }
     } catch {
@@ -491,6 +518,9 @@ async function runTurnCore({
   //    attempt-local; here we do the one-time chat.jsonl rewrite and
   //    emit the terminal turn.completed / turn.failed bus events.
   const finalText = result.textChunks.join('\n\n')
+  const errorKind = result.didFail
+    ? classifyFailure(result.errorText, result.canceled)
+    : undefined
   const chat = await readChat(projectId)
   const finalChat = chat.map<ChatMessage>((m) => {
     if (m.role !== 'agent' || m.id !== agentMessageId) return m
@@ -499,6 +529,7 @@ async function runTurnCore({
       status: result.didFail ? 'failed' : 'completed',
       text: finalText || m.text,
       error: result.errorText,
+      errorKind,
       completedAt: Date.now(),
     } satisfies AgentMessage
   })
@@ -513,6 +544,7 @@ async function runTurnCore({
       kind: 'turn.failed',
       turnId,
       error: result.errorText ?? 'codex failed',
+      errorKind,
     })
   } else {
     projectBus.publish(projectId, { kind: 'turn.completed', turnId })

@@ -1,9 +1,14 @@
 import { useEffect, useRef, useState } from 'react'
-import type { AspectRatio, ReasoningEffort, StylePreset } from '@vissor/shared'
+import type {
+  AgentErrorKind,
+  AspectRatio,
+  ReasoningEffort,
+  StylePreset,
+} from '@vissor/shared'
 import { useStore } from '../store/store.js'
 import { api } from '../lib/api.js'
 import { fitCameraTo } from '../lib/camera.js'
-import { useT } from '../lib/i18n/index.js'
+import { useT, type I18nKey } from '../lib/i18n/index.js'
 
 const COLLAPSED_KEY = 'vissor:chatCollapsed'
 
@@ -226,9 +231,7 @@ export function ChatFeed(): JSX.Element | null {
                 : m.text || (m.status === 'streaming' ? '…' : '')}
             </div>
             {m.role === 'agent' && m.error && (
-              <div style={{ fontSize: 12, color: 'var(--danger)' }}>
-                {m.error}
-              </div>
+              <FailureNote error={m.error} kind={m.errorKind} />
             )}
             {m.role === 'agent' && m.status === 'failed' && (
               <RetryButton turnId={m.turnId} />
@@ -236,6 +239,59 @@ export function ChatFeed(): JSX.Element | null {
           </div>
         ))}
       </div>
+    </div>
+  )
+}
+
+const FAIL_COPY: Record<string, I18nKey> = {
+  quota: 'fail.quota',
+  auth: 'fail.auth',
+  upstream: 'fail.upstream',
+  'no-output': 'fail.noOutput',
+  crashed: 'fail.crashed',
+  interrupted: 'fail.interrupted',
+  internal: 'fail.internal',
+  canceled: 'fail.canceled',
+}
+
+function FailureNote({
+  error,
+  kind,
+}: {
+  error: string
+  kind?: AgentErrorKind
+}): JSX.Element {
+  const t = useT()
+  const copyKey = kind ? FAIL_COPY[kind] : undefined
+  if (!copyKey) {
+    return <div style={{ fontSize: 12, color: 'var(--danger)' }}>{error}</div>
+  }
+  return (
+    <div style={{ fontSize: 12, color: 'var(--danger)', lineHeight: 1.45 }}>
+      <div>{t(copyKey)}</div>
+      <details style={{ marginTop: 3 }}>
+        <summary
+          style={{
+            cursor: 'pointer',
+            color: 'var(--ink-faint)',
+            fontSize: 11,
+            listStyle: 'none',
+          }}
+        >
+          {t('fail.showRaw')}
+        </summary>
+        <div
+          style={{
+            marginTop: 3,
+            color: 'var(--ink-dim)',
+            fontFamily: 'var(--font-mono)',
+            fontSize: 11,
+            wordBreak: 'break-word',
+          }}
+        >
+          {error}
+        </div>
+      </details>
     </div>
   )
 }

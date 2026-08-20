@@ -257,6 +257,7 @@ export const useStore = create<AppState>((set, get) => ({
             chat: withAgentMessage(s.chat, event.turnId, {
               status: 'failed',
               error: event.error,
+              errorKind: event.errorKind,
             }),
             pendingSkeletons: restSkeletons,
           }

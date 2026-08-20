@@ -98,6 +98,16 @@ const en = {
   'chat.agent': 'Agent',
   'chat.statusThinking': 'Thinking',
   'chat.statusFailed': '· failed',
+  'fail.quota': 'Codex credit is used up. Buy more at chatgpt.com/codex/settings/usage, or wait for the quota to reset.',
+  'fail.auth': 'Codex is not signed in on the server. Sign in again there, then retry.',
+  'fail.upstream': 'The connection to OpenAI dropped. Vissor already retried automatically. These clear up within a few minutes — retry then.',
+  'fail.noOutput': 'The model finished without producing an image. Describe the picture more concretely, or word it differently and retry.',
+  'fail.crashed': 'The generator exited unexpectedly. Vissor already retried. If this keeps happening, codex on the server may need updating.',
+  'fail.interrupted': 'The server restarted before this finished, so the result was lost. Retry to run it again.',
+  'fail.internal': 'Vissor hit an internal error. This is a bug — the server log has the details.',
+  'fail.canceled': 'Canceled.',
+  'fail.showRaw': 'Details',
+
   'chat.retry': '↻ Retry',
   'chat.retryTitle': 'Retry this turn',
 

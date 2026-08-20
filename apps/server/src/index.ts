@@ -94,6 +94,7 @@ async function reconcileStuckTurns(): Promise<void> {
           ...m,
           status: 'failed',
           error: 'Server restarted before this turn finished.',
+          errorKind: 'interrupted',
           completedAt: Date.now(),
         } satisfies AgentMessage
       }

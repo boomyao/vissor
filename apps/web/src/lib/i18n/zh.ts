@@ -99,6 +99,16 @@ export const zh: Dict = {
   'chat.agent': '助手',
   'chat.statusThinking': '思考中',
   'chat.statusFailed': '· 失败',
+  'fail.quota': 'Codex 额度已用尽。可前往 chatgpt.com/codex/settings/usage 购买，或等配额重置后再试。',
+  'fail.auth': '服务器上的 codex 未登录或凭据已失效，需要重新登录后再重试。',
+  'fail.upstream': '与 OpenAI 的连接中断，已自动重试过。这类故障通常几分钟内自行恢复，稍后再重试即可。',
+  'fail.noOutput': '模型跑完了但没有产出图片。把画面描述得更具体些，或换个说法重试。',
+  'fail.crashed': '生成器异常退出，已自动重试过。若反复出现，可能是服务器上的 codex 需要更新。',
+  'fail.interrupted': '服务在这次生成完成前重启了，本次结果已丢失。直接重试即可。',
+  'fail.internal': 'Vissor 服务内部错误。这是一个 bug，详情见服务器日志。',
+  'fail.canceled': '已取消。',
+  'fail.showRaw': '详情',
+
   'chat.retry': '↻ 重试',
   'chat.retryTitle': '重试本次生成',
 
