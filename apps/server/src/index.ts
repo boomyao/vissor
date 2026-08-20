@@ -3,11 +3,13 @@ import cors from '@fastify/cors'
 import multipart from '@fastify/multipart'
 import fastifyStatic from '@fastify/static'
 import { access } from 'node:fs/promises'
+import { existsSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
-import { dirname, join, resolve } from 'node:path'
+import { dirname, join, resolve, sep } from 'node:path'
 import type { AgentMessage, ChatMessage } from '@vissor/shared'
 import { attachUser, getUserIdByUsername } from './auth.js'
 import { cancelAllTurns } from './codex.js'
+import { resolveCodex } from './codexPath.js'
 import { getDb } from './db.js'
 import { cleanScratchOnBoot, ensureDirs, VISSOR_HOME } from './paths.js'
 import { authRoutes } from './routes/auth.js'
@@ -109,6 +111,7 @@ async function main(): Promise<void> {
   await getDb()
   await migrateLegacyProjects()
   await reconcileStuckTurns()
+  const codexBin = resolveCodex()
 
   const app = Fastify({
     logger: { level: process.env.LOG_LEVEL ?? 'info' },
@@ -127,7 +130,28 @@ async function main(): Promise<void> {
   // lookup. Routes that need a user use `requireAuth` as preHandler.
   app.addHook('preHandler', attachUser)
 
-  app.get('/api/health', async () => ({ ok: true, home: VISSOR_HOME }))
+  app.get('/api/health', async (_req, reply) => {
+    const codexBin = resolveCodex()
+    const codex = codexBin.startsWith('/') && existsSync(codexBin)
+    let db = false
+    try {
+      const handle = await getDb()
+      handle.query('SELECT 1').get()
+      db = true
+    } catch {
+      db = false
+    }
+    let home = false
+    try {
+      await access(VISSOR_HOME)
+      home = true
+    } catch {
+      home = false
+    }
+    const ok = codex && db && home
+    if (!ok) reply.code(503)
+    return { ok, home: VISSOR_HOME, checks: { codex, db, home } }
+  })
 
   await app.register(authRoutes)
   await app.register(projectsRoutes)
@@ -151,9 +175,23 @@ async function main(): Promise<void> {
       // misses a static file should fall through to index.html so
       // deep links work on refresh.
       wildcard: false,
+      cacheControl: false,
+      setHeaders: (res, filePath) => {
+        if (filePath.endsWith('.html')) {
+          res.setHeader('Cache-Control', 'no-cache')
+        } else if (filePath.includes(`${sep}assets${sep}`)) {
+          res.setHeader('Cache-Control', 'public, max-age=31536000, immutable')
+        } else {
+          res.setHeader('Cache-Control', 'public, max-age=86400')
+        }
+      },
     })
     app.setNotFoundHandler((req, reply) => {
       if (req.raw.url?.startsWith('/api/')) {
+        return reply.code(404).send({ error: 'not_found' })
+      }
+      const pathname = req.raw.url?.split('?')[0] ?? '/'
+      if (/\.[a-z0-9]+$/i.test(pathname)) {
         return reply.code(404).send({ error: 'not_found' })
       }
       return reply.sendFile('index.html')
@@ -167,7 +205,16 @@ async function main(): Promise<void> {
   // Keep 127.0.0.1 in dev — Vite already fronts us.
   const host = process.env.HOST ?? (webDist ? '0.0.0.0' : '127.0.0.1')
   await app.listen({ port, host })
-  app.log.info({ port, host, home: VISSOR_HOME }, 'vissor server up')
+  app.log.info(
+    { port, host, home: VISSOR_HOME, codexBin },
+    'vissor server up',
+  )
+  if (!codexBin.startsWith('/')) {
+    app.log.warn(
+      { codexBin },
+      'codex binary did not resolve to an absolute path; image turns will likely fail',
+    )
+  }
 
   // Graceful shutdown: stop accepting new connections, signal any
   // in-flight codex children to wind down, then exit. If someone
