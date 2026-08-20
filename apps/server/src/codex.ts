@@ -82,6 +82,23 @@ const CODEX_SERVICE_TIER = process.env.VISSOR_CODEX_SERVICE_TIER ?? 'fast'
  *  the source image's resolution (codex routinely emits 1024+ pixel
  *  PNGs). Aspect ratio is preserved. */
 const MAX_TILE_SIDE = 512
+const DEFAULT_SLOW_WARN_MS = 60_000
+const DEFAULT_DEAD_AIR_MS = 180_000
+const SLOW_WARN_MS = readPositiveIntEnv(
+  'VISSOR_CODEX_SLOW_WARN_MS',
+  DEFAULT_SLOW_WARN_MS,
+)
+const DEAD_AIR_MS = readPositiveIntEnv(
+  'VISSOR_CODEX_DEAD_AIR_MS',
+  DEFAULT_DEAD_AIR_MS,
+)
+
+function readPositiveIntEnv(name: string, fallback: number): number {
+  const raw = process.env[name]
+  if (!raw) return fallback
+  const n = Number.parseInt(raw, 10)
+  return Number.isFinite(n) && n > 0 ? n : fallback
+}
 
 function clampTileSize(w: number, h: number): { w: number; h: number } {
   const longest = Math.max(w, h)
@@ -547,12 +564,10 @@ async function runOneAttempt(p: OneAttemptParams): Promise<AttemptResult> {
       }
     },
   })
-  const SLOW_WARN_MS = 60_000
-  // At xhigh reasoning effort the model can legitimately go silent for
-  // ~2 min between `reasoning` start and the first image_gen tool
-  // call (observed 2m9s in the ChatGPT Desktop reference session).
-  // Pad past that, but not so far that a true stall is invisible.
-  const DEAD_AIR_MS = 180_000
+  // At xhigh reasoning effort and for reference-image restoration,
+  // codex can legitimately go silent for several minutes before the
+  // first image_gen output. Keep the guard configurable so production
+  // can trade faster failure detection for fewer false stalls.
   const deadAirTimer = setInterval(() => {
     if (ourKill) return
     const idle = Date.now() - lastActivity
