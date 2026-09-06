@@ -8,15 +8,16 @@ import type {
   CanvasImage,
   CanvasItem,
   ChatMessage,
+  GenerationPlan,
   UserMessage,
 } from '@vissor/shared'
-import { ASPECT_DIMS } from '@vissor/shared'
+import { ASPECT_DIMS, imageSlotPosition } from '@vissor/shared'
 import { projectBus } from './bus.js'
 import { resolveCodex } from './codexPath.js'
-import { ensureWatcher, setHandler } from './imageWatcher.js'
+import { ensureWatcher, flushWatcher, setHandler } from './imageWatcher.js'
 import { runExclusive } from './mutex.js'
 import { turnScratchDir } from './paths.js'
-import { buildPromptForCodex } from './systemPrompt.js'
+import { buildPromptForCodex, parseGenerationPlan, PLAN_PREFIX } from './systemPrompt.js'
 import {
   appendChat,
   appendItemOp,
@@ -60,15 +61,9 @@ interface RunTurnParams {
   variantCount?: number
   stylePreset?: string
   aspectRatio?: string
-  /** Codex model_reasoning_effort override. Undefined inherits ~/.codex/config.toml. */
   reasoningEffort?: string
 }
 
-/**
- * Whitelist guard for model_reasoning_effort. Prevents arbitrary
- * user strings from flowing into the codex CLI flag. Anything outside
- * the whitelist falls back to the user's config.toml default.
- */
 function validReasoningEffort(v: string | undefined): string | null {
   if (!v) return null
   return v === 'low' || v === 'medium' || v === 'high' || v === 'xhigh'
@@ -76,7 +71,7 @@ function validReasoningEffort(v: string | undefined): string | null {
     : null
 }
 
-const CODEX_MODEL = process.env.VISSOR_CODEX_MODEL ?? 'gpt-5.6-sol'
+const CODEX_MODEL = process.env.VISSOR_CODEX_MODEL ?? 'gpt-6-astra'
 const CODEX_SERVICE_TIER = process.env.VISSOR_CODEX_SERVICE_TIER ?? 'fast'
 
 /** Cap the longest tile side so canvas stays readable regardless of
@@ -124,7 +119,6 @@ function clampTileSize(w: number, h: number): { w: number; h: number } {
   return { w: Math.round(w * scale), h: Math.round(h * scale) }
 }
 
-/** Place a tile on a fresh row below existing content. */
 async function placeNewImageItem(
   projectId: string,
   turnId: string,
@@ -134,26 +128,11 @@ async function placeNewImageItem(
   height: number,
   defaultTileSize?: { w: number; h: number },
 ): Promise<CanvasImage> {
-  // Grid layout: all variants of one turn sit on a single horizontal
-  // row. Each subsequent turn sits on a new row below.
   const TILE_W = defaultTileSize?.w ?? 512
   const TILE_H = defaultTileSize?.h ?? 512
-  const GAP = 24
   const { readItems } = await import('./store.js')
   const items = await readItems(projectId)
-  // Variants of the SAME turn share a Y baseline — use the row Y
-  // established by the first sibling (if any). Otherwise, create a
-  // new row below everything else.
-  const siblings = items.filter((i) => i.turnId === turnId)
-  const otherItems = items.filter((i) => i.turnId !== turnId)
-  const otherMaxY = otherItems.reduce((acc, i) => Math.max(acc, i.y + i.h), 0)
-  const rowY = siblings.length > 0
-    ? siblings[0].y
-    : otherMaxY + (otherItems.length ? GAP : 0)
-  // X is left of the farthest-right sibling, or 0 for the first.
-  const rowRight = siblings.reduce((acc, i) => Math.max(acc, i.x + i.w), 0)
-  const x = siblings.length > 0 ? rowRight + GAP : 0
-  const y = rowY
+  const { x, y } = imageSlotPosition(items, turnId, variantIndex)
   const now = Date.now()
   const sized = clampTileSize(width || TILE_W, height || TILE_H)
   const item: CanvasImage = {
@@ -268,6 +247,7 @@ function classifyFailure(
   if (/without producing any images|produced no output/i.test(t)) {
     return 'no-output'
   }
+  if (/only produced|generation plan/i.test(t)) return 'incomplete-output'
   if (/exited with code|was terminated/i.test(t)) return 'crashed'
   if (/^internal error/i.test(t)) return 'internal'
   return 'unknown'
@@ -310,7 +290,7 @@ function waitBeforeRetry(
 }
 
 async function runTurnInner(params: RunTurnParams): Promise<void> {
-  const { projectId, turnId, variantCount: requestedVariantCount } = params
+  const { projectId, turnId } = params
 
   // 1. Create & persist the agent message skeleton.
   const agentMessageId = randomUUID()
@@ -329,21 +309,16 @@ async function runTurnInner(params: RunTurnParams): Promise<void> {
     turnId,
     agentMessageId,
   })
-  const requestedCount = requestedVariantCount ?? 2
   projectBus.publish(projectId, {
     kind: 'turn.status',
     turnId,
-    statusLine:
-      requestedCount === 1
-        ? 'Generating…'
-        : `Generating ${requestedCount} variants…`,
+    statusLine: 'Planning images…',
   })
 
   try {
     await runTurnCore({
       params,
       agentMessageId,
-      requestedCount,
     })
   } catch (err) {
     // Safety net: any unexpected throw from the core path would have
@@ -390,13 +365,11 @@ async function runTurnInner(params: RunTurnParams): Promise<void> {
 interface RunTurnCoreParams {
   params: RunTurnParams
   agentMessageId: string
-  requestedCount: number
 }
 
 async function runTurnCore({
   params,
   agentMessageId,
-  requestedCount,
 }: RunTurnCoreParams): Promise<void> {
   const {
     projectId,
@@ -421,13 +394,7 @@ async function runTurnCore({
   for (const p of attachedImagePaths) {
     imageArgs.push('-i', p)
   }
-  // Reasoning effort: if the request supplied a recognised value we
-  // pass it through to codex. Otherwise we let codex inherit whatever
-  // is in ~/.codex/config.toml. Earlier code forced "low" here and
-  // starved image_gen — only opt in when the client is explicit.
-  const effortArgs: string[] = []
-  const effort = validReasoningEffort(reasoningEffort)
-  if (effort) effortArgs.push('-c', `model_reasoning_effort=${effort}`)
+  const effort = validReasoningEffort(reasoningEffort) ?? 'medium'
 
   const commonArgs = [
     '--json',
@@ -437,7 +404,8 @@ async function runTurnCore({
     `model="${CODEX_MODEL}"`,
     '-c',
     `service_tier="${CODEX_SERVICE_TIER}"`,
-    ...effortArgs,
+    '-c',
+    `model_reasoning_effort=${effort}`,
     ...imageArgs,
   ]
   // Wrap the user's text in the design-agent system prompt. Codex
@@ -473,7 +441,6 @@ async function runTurnCore({
       priorSessionId: initialPriorSessionId,
       commonArgs,
       promptForCodex,
-      requestedCount,
       aspectRatio,
     })
     if (lastResult.canceled) break
@@ -502,6 +469,7 @@ async function runTurnCore({
       lastResult = {
         ...lastResult,
         canceled: true,
+        didFail: true,
         errorText: 'Canceled by user.',
       }
       break
@@ -558,7 +526,6 @@ interface OneAttemptParams {
   priorSessionId: string | undefined
   commonArgs: string[]
   promptForCodex: string
-  requestedCount: number
   aspectRatio?: string
 }
 
@@ -576,7 +543,6 @@ async function runOneAttempt(p: OneAttemptParams): Promise<AttemptResult> {
     priorSessionId,
     commonArgs,
     promptForCodex,
-    requestedCount,
     aspectRatio,
   } = p
 
@@ -598,6 +564,7 @@ async function runOneAttempt(p: OneAttemptParams): Promise<AttemptResult> {
   // real workspace clean.
   const scratch = turnScratchDir(turnId)
   await mkdir(scratch, { recursive: true })
+  if (priorSessionId) await ensureWatcher(projectId, priorSessionId)
   // Use 'pipe' for stdin and close it immediately so codex sees EOF
   // and doesn't hang waiting on "additional input from stdin".
   // (Passing 'ignore' here has been observed to leave the child
@@ -607,6 +574,10 @@ async function runOneAttempt(p: OneAttemptParams): Promise<AttemptResult> {
   const child = spawn(codexBin, argv, {
     cwd: scratch,
     stdio: ['pipe', 'pipe', 'pipe'],
+  })
+  const closed = new Promise<void>((resolve) => {
+    child.once('close', () => resolve())
+    child.once('error', () => resolve())
   })
   child.stdin.end()
 
@@ -618,24 +589,27 @@ async function runOneAttempt(p: OneAttemptParams): Promise<AttemptResult> {
     process.stderr.write(`[codex:${projectId}] ${chunk}`)
   })
 
-  // If we already know the thread id from a previous turn, start
-  // watching it before we see thread.started. Otherwise we'll
-  // register the handler when that event arrives below.
-  if (priorSessionId) {
-    await ensureWatcher(projectId, priorSessionId)
-    setHandler(projectId, async (abs) => {
-      await onImageProduced(projectId, turnId, agentMessageId, abs)
-    })
-  }
-
   // Per-attempt state.
   let variantCount = 0
+  let plan: GenerationPlan | null = null
+  let requestedCount: number | undefined
+  const ingestedAssets = new Set<string>()
+  let killTimer: ReturnType<typeof setTimeout> | undefined
   let stdoutBuf = ''
   // Codex 0.122 can emit multiple `item.completed` agent_messages per turn
   // (e.g. a reasoning preamble + the final answer). We concatenate them in
   // order so the UI ends up with the full transcript.
   const textChunks: string[] = []
   let turnError: string | null = null
+  let work = Promise.resolve()
+  const enqueue = (operation: () => Promise<void>): Promise<void> => {
+    work = work.then(operation).catch((err) => {
+      turnError = err instanceof Error ? err.message : String(err)
+      ourKill = true
+      child.kill('SIGTERM')
+    })
+    return work
+  }
 
   // Force-exit guard. Two scenarios:
   //   (a) "got what we asked for" — once variantCount >= requestedCount,
@@ -690,7 +664,7 @@ async function runOneAttempt(p: OneAttemptParams): Promise<AttemptResult> {
     if (idle > DEAD_AIR_MS) {
       turnError =
         variantCount > 0
-          ? `No response from codex for ${Math.round(DEAD_AIR_MS / 1000)}s — keeping the ${variantCount} variant${variantCount === 1 ? '' : 's'} already produced.`
+          ? `No response from codex for ${Math.round(DEAD_AIR_MS / 1000)}s — keeping the ${variantCount} images already produced.`
           : `No response from codex for ${Math.round(DEAD_AIR_MS / 1000)}s (OpenAI upstream stalled).`
       ourKill = true
       stalled = true
@@ -715,10 +689,8 @@ async function runOneAttempt(p: OneAttemptParams): Promise<AttemptResult> {
         kind: 'session.codexId',
         codexSessionId: threadId,
       })
-      await ensureWatcher(projectId, threadId)
-      setHandler(projectId, async (abs) => {
-        await onImageProduced(projectId, turnId, agentMessageId, abs)
-      })
+      await ensureWatcher(projectId, threadId, threadId !== priorSessionId)
+      setHandler(projectId, (abs) => enqueue(() => onImageProduced(abs)))
     } else if (type === 'item.started') {
       const item = (ev as { item: CodexItem }).item
       const status = statusLineFor(item)
@@ -732,7 +704,31 @@ async function runOneAttempt(p: OneAttemptParams): Promise<AttemptResult> {
     } else if (type === 'item.completed') {
       const item = (ev as { item: CodexItem }).item
       if (item.type === 'agent_message') {
-        const t = (item as { text?: string }).text ?? ''
+        const raw = (item as { text?: string }).text ?? ''
+        const visibleLines: string[] = []
+        for (const line of raw.split('\n')) {
+          if (!line.trim().startsWith(PLAN_PREFIX)) {
+            visibleLines.push(line)
+            continue
+          }
+          const parsed = parseGenerationPlan(line.trim())
+          if (!parsed) throw new Error('Invalid generation plan. Please retry.')
+          if (plan || variantCount > 0) continue
+          plan = parsed
+          requestedCount = parsed.images.length
+          const chat = await readChat(projectId)
+          await rewriteChat(projectId, chat.map((m) =>
+            m.role === 'agent' && m.id === agentMessageId
+              ? { ...m, generationPlan: parsed }
+              : m,
+          ))
+          projectBus.publish(projectId, { kind: 'turn.plan', turnId, plan: parsed })
+          projectBus.publish(projectId, {
+            kind: 'turn.status', turnId,
+            statusLine: `Generating 1 of ${requestedCount}…`,
+          })
+        }
+        const t = visibleLines.join('\n').trim()
         if (t) {
           const delta = textChunks.length ? '\n\n' + t : t
           textChunks.push(t)
@@ -748,28 +744,30 @@ async function runOneAttempt(p: OneAttemptParams): Promise<AttemptResult> {
     } else if (type === 'turn.failed') {
       const msg = (ev as { error?: { message?: string } }).error?.message ?? 'codex turn failed'
       turnError = msg
-      projectBus.publish(projectId, { kind: 'turn.failed', turnId, error: msg })
     } else if (type === 'error') {
       const msg = (ev as { message?: string }).message ?? 'codex error'
       turnError = msg
-      projectBus.publish(projectId, { kind: 'turn.failed', turnId, error: msg })
     }
   }
 
   const onImageProduced = async (
-    pid: string,
-    tid: string,
-    _agentId: string,
     absPath: string,
   ) => {
+    if (canceled || (requestedCount !== undefined && variantCount >= requestedCount)) return
+    if (!plan || !requestedCount) throw new Error('Missing generation plan before image generation. Please retry.')
+    const pid = projectId
+    const tid = turnId
     const asset = await ingestFile(pid, absPath, {
-      mime: 'image/png',
+      mime: MIME_BY_EXT[extname(absPath).toLowerCase()] ?? 'image/png',
       source: 'codex',
       originalFilename: absPath.split('/').pop() ?? 'ig.png',
     })
+    if (ingestedAssets.has(asset.id)) return
+    ingestedAssets.add(asset.id)
     projectBus.publish(pid, { kind: 'asset.added', asset })
-    const tileDims = aspectRatio
-      ? (ASPECT_DIMS as Record<string, { w: number; h: number }>)[aspectRatio]
+    const resolvedAspect = plan.aspectRatio ?? aspectRatio
+    const tileDims = resolvedAspect
+      ? (ASPECT_DIMS as Record<string, { w: number; h: number }>)[resolvedAspect]
       : undefined
     const item = await placeNewImageItem(
       pid,
@@ -804,18 +802,22 @@ async function runOneAttempt(p: OneAttemptParams): Promise<AttemptResult> {
       ourKill = true
       // Small grace so codex can flush its last few events (turn.completed
       // or the final agent_message text) before we send SIGTERM.
-      setTimeout(() => {
+      killTimer = setTimeout(() => {
         if (!child.killed) child.kill('SIGTERM')
       }, 1_500)
     }
     // Track it on the agent message — rewrite chat log.
     const chat = await readChat(pid)
     const next = chat.map((m) =>
-      m.role === 'agent' && m.id === _agentId
+      m.role === 'agent' && m.id === agentMessageId
         ? { ...m, producedItemIds: [...m.producedItemIds, item.id] }
         : m,
     )
     await rewriteChat(pid, next)
+  }
+
+  if (priorSessionId) {
+    setHandler(projectId, (abs) => enqueue(() => onImageProduced(abs)))
   }
 
   child.stdout.on('data', (chunk: Buffer) => {
@@ -823,56 +825,28 @@ async function runOneAttempt(p: OneAttemptParams): Promise<AttemptResult> {
     stdoutBuf += chunk.toString('utf8')
     const lines = stdoutBuf.split('\n')
     stdoutBuf = lines.pop() ?? ''
-    for (const line of lines) void handleLine(line)
+    for (const line of lines) void enqueue(() => handleLine(line))
   })
 
-  // Wait for exit.
-  await new Promise<void>((resolve) => {
-    child.once('close', () => resolve())
-    child.once('error', () => resolve())
-  })
-  // Flush trailing line.
-  if (stdoutBuf.trim().length) await handleLine(stdoutBuf)
+  try {
+    await closed
+    if (stdoutBuf.trim().length) await enqueue(() => handleLine(stdoutBuf))
+    await work
+    await flushWatcher(projectId)
+    setHandler(projectId, null)
+    await work
+    await ingestScratch(scratch, (abs) => enqueue(() => onImageProduced(abs)))
+  } finally {
+    setHandler(projectId, null)
+    clearInterval(deadAirTimer)
+    clearTimeout(killTimer)
+    const h = cancelHandles.get(projectId)
+    if (h && h.turnId === turnId) cancelHandles.delete(projectId)
+    await rm(scratch, { recursive: true, force: true }).catch(() => undefined)
+  }
 
-  // Grace period for the image watcher to ingest any png that lands
-  // right at exit. The watcher itself lives for the life of the
-  // server; we just detach our handler so files arriving later aren't
-  // attributed to this (now-finished) turn.
-  await new Promise((r) => setTimeout(r, 800))
-  setHandler(projectId, null)
-
-  // Also scan the scratch dir — codex often falls back to shell tools
-  // like `magick`/`convert` that dump output there. Each image we find
-  // becomes a tile on the canvas, same as image_gen output.
-  await ingestScratch(
-    projectId,
-    turnId,
-    agentMessageId,
-    scratch,
-    () => variantCount++,
-    aspectRatio,
-  )
-  // Whether or not we found anything, clean up the scratch dir. Keep
-  // it small: don't leave generated detritus around forever.
-  await rm(scratch, { recursive: true, force: true }).catch(() => undefined)
-
-  clearInterval(deadAirTimer)
-  // Release the cancel handle — only do this if we're still the registered
-  // owner (defensive; the mutex should already prevent concurrent owners).
-  const h = cancelHandles.get(projectId)
-  if (h && h.turnId === turnId) cancelHandles.delete(projectId)
-
-  // Classify the outcome:
-  //   - Clean exit (code 0): completed.
-  //   - Non-zero exit code: failed.
-  //   - Killed by us (ourKill): completed if we already got at least
-  //     one variant (that was the point — early-exit), else failed
-  //     (dead-air with no output).
-  //   - Killed by anything else (exitCode null, ourKill false): failed
-  //     — user or the system took codex out.
-  //   - Also fail if any inline error event was observed on stdout.
   const exitCode = child.exitCode
-  const exitedBadly = exitCode !== null && exitCode !== 0
+  const exitedBadly = exitCode !== null && exitCode !== 0 && !ourKill
   const killedByOther = exitCode === null && !ourKill
   // Clean-exit + zero images is a failure, not a success: codex
   // sometimes picks the wrong tool (e.g. `imagegen` skill that shells
@@ -881,15 +855,19 @@ async function runOneAttempt(p: OneAttemptParams): Promise<AttemptResult> {
   // so no pictures === failed turn.
   const cleanExitNoOutput =
     exitCode === 0 && variantCount === 0
+  const incomplete = requestedCount !== undefined && variantCount > 0 && variantCount < requestedCount
   const didFail =
     turnError !== null ||
     exitedBadly ||
     killedByOther ||
     (ourKill && variantCount === 0 && stalled) ||
-    cleanExitNoOutput
+    cleanExitNoOutput ||
+    incomplete
   const errorText = didFail
     ? turnError ??
-      (exitedBadly
+      (incomplete
+        ? `Only produced ${variantCount} of ${requestedCount} images. The completed images remain on the canvas.`
+        : exitedBadly
         ? `codex exited with code ${exitCode}`
         : killedByOther
           ? 'codex process was terminated'
@@ -938,22 +916,10 @@ const MIME_BY_EXT: Record<string, string> = {
   '.svg': 'image/svg+xml',
 }
 
-/**
- * Walk the scratch dir for images, ingest each one as an asset and
- * place it as a tile on the canvas. Ordering is by mtime so variants
- * land in roughly the order codex produced them.
- */
 async function ingestScratch(
-  projectId: string,
-  turnId: string,
-  agentMessageId: string,
   scratch: string,
-  nextVariantIndex: () => number,
-  aspectRatio?: string,
+  onImage: (path: string) => Promise<void>,
 ): Promise<void> {
-  const tileDims = aspectRatio
-    ? (ASPECT_DIMS as Record<string, { w: number; h: number }>)[aspectRatio]
-    : undefined
   let entries: string[]
   try {
     entries = await readdir(scratch)
@@ -974,40 +940,7 @@ async function ingestScratch(
   }
   candidates.sort((a, b) => a.mtime - b.mtime)
   for (const c of candidates) {
-    const ext = extname(c.abs).toLowerCase()
-    const mime = MIME_BY_EXT[ext] ?? 'application/octet-stream'
-    const asset = await ingestFile(projectId, c.abs, {
-      mime,
-      source: 'codex',
-      originalFilename: c.abs.split('/').pop() ?? `scratch${ext}`,
-    })
-    projectBus.publish(projectId, { kind: 'asset.added', asset })
-    const idx = nextVariantIndex()
-    const item = await placeNewImageItem(
-      projectId,
-      turnId,
-      asset.id,
-      idx,
-      asset.width ?? tileDims?.w ?? 512,
-      asset.height ?? tileDims?.h ?? 512,
-      tileDims,
-    )
-    projectBus.publish(projectId, {
-      kind: 'turn.status',
-      turnId,
-      statusLine: `Variant ${idx + 1} ready`,
-    })
-    projectBus.publish(projectId, {
-      kind: 'item.added',
-      item: item as CanvasItem,
-    })
-    const chat = await readChat(projectId)
-    const next = chat.map((m) =>
-      m.role === 'agent' && m.id === agentMessageId
-        ? { ...m, producedItemIds: [...m.producedItemIds, item.id] }
-        : m,
-    )
-    await rewriteChat(projectId, next)
+    await onImage(c.abs)
   }
 }
 

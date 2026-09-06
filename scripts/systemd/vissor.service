@@ -14,7 +14,7 @@ Environment=NODE_ENV=production
 Environment=HOST=127.0.0.1
 Environment=PORT=9999
 Environment=VISSOR_HOME=/home/boomyao/.vissor
-Environment=VISSOR_CODEX_PATH=/home/boomyao/bin/codex-via-bun
+Environment=VISSOR_CODEX_PATH=/home/boomyao/.local/share/vissor/codex-0.153.4/run-codex
 Environment=VISSOR_CODEX_DEAD_AIR_MS=600000
 ExecStart=/home/boomyao/.bun/bin/bun run --filter @vissor/server start
 Restart=always

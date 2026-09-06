@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import type { ReasoningEffort } from '@vissor/shared'
+import { DEFAULT_IMAGE_COUNT, MAX_IMAGE_COUNT } from '@vissor/shared'
 import { useStore } from '../store/store.js'
 import { api } from '../lib/api.js'
 import { fitCameraTo } from '../lib/camera.js'
@@ -42,9 +43,9 @@ export function CommandBar(): JSX.Element {
 
   const [text, setText] = useState('')
   const [busyUpload, setBusyUpload] = useState(false)
-  const [variantCount, setVariantCount] = useState<1 | 2 | 4>(1)
+  const [variantCount, setVariantCount] = useState<number | undefined>(undefined)
   const [reasoningEffort, setReasoningEffort] =
-    useState<ReasoningEffort>('high')
+    useState<ReasoningEffort>('medium')
   const fileRef = useRef<HTMLInputElement>(null)
   const textAreaRef = useRef<HTMLTextAreaElement>(null)
 
@@ -93,7 +94,7 @@ export function CommandBar(): JSX.Element {
       }
       setText('')
       clearAttached()
-      startPendingSkeletons(turnId, variantCount, undefined)
+      startPendingSkeletons(turnId, variantCount ?? DEFAULT_IMAGE_COUNT, undefined)
       // Frame the newly-laid skeletons so the user's eye lands on the
       // painting spots rather than hunting across the board for them.
       const slots = useStore.getState().pendingSkeletons[turnId]
@@ -111,6 +112,8 @@ export function CommandBar(): JSX.Element {
             turnId,
             text: payload.text,
             attachedAssetIds: payload.attachedAssetIds,
+            variantCount: payload.variantCount,
+            reasoningEffort: payload.reasoningEffort,
             createdAt: Date.now(),
           },
           {
@@ -127,7 +130,10 @@ export function CommandBar(): JSX.Element {
         activeTurnId: turnId,
       }))
       try {
-        await api.sendChat(payload)
+        const response = await api.sendChat(payload)
+        useStore.setState((s) => ({
+          chat: s.chat.map((m) => m.role === 'user' && m.turnId === turnId ? response.userMessage : m),
+        }))
       } catch (err) {
         clearPendingSkeletons(turnId)
         useStore.setState((s) => ({
@@ -525,20 +531,25 @@ function VariantCountPicker({
   value,
   onChange,
 }: {
-  value: 1 | 2 | 4
-  onChange: (n: 1 | 2 | 4) => void
+  value: number | undefined
+  onChange: (n: number | undefined) => void
 }): JSX.Element {
   const t = useT()
-  const options: (1 | 2 | 4)[] = [1, 2, 4]
-  const idx = options.indexOf(value)
-  const next = (): void => onChange(options[(idx + 1) % options.length])
   return (
-    <Chip onClick={next} active title={t('command.countTitle')}>
-      <span style={{ color: 'var(--ink-dim)', marginRight: 4 }}>
+    <label style={{ display: 'inline-flex', alignItems: 'center', gap: 4, height: 28, padding: '0 10px', border: '1px solid var(--ink)', borderRadius: 999, fontSize: 12, flex: 'none' }} title={t('command.countTitle')}>
+      <span style={{ color: 'var(--ink-dim)' }}>
         {t('command.countLabel')}
       </span>
-      <b style={{ fontWeight: 600, color: 'var(--ink)' }}>{value}×</b>
-    </Chip>
+      <select
+        aria-label={t('command.countLabel')}
+        value={value ?? 'auto'}
+        onChange={(e) => onChange(e.target.value === 'auto' ? undefined : Number(e.target.value))}
+        style={{ color: 'var(--ink)', background: 'transparent', border: 0, font: 'inherit', fontWeight: 600, cursor: 'pointer' }}
+      >
+        <option value="auto">{t('command.countAuto')}</option>
+        {Array.from({ length: MAX_IMAGE_COUNT }, (_, i) => <option key={i + 1} value={i + 1}>{i + 1}×</option>)}
+      </select>
+    </label>
   )
 }
 
@@ -575,4 +586,3 @@ function ReasoningPicker({
     </Chip>
   )
 }
-

@@ -86,8 +86,8 @@ function Workspace({ user, onSignedOut }: WorkspaceProps): JSX.Element {
     if (!project) return
     if (project.id !== lastFitProjectId.current) {
       lastFitProjectId.current = project.id
-      setCamera(fitCameraTo(items))
-    } else if (items.length === 1) {
+      setCamera(fitCameraTo([...items, ...Object.values(useStore.getState().pendingSkeletons).flat()]))
+    } else if (items.length === 1 && !useStore.getState().activeTurnId) {
       // Auto-fit the first item that appears on a fresh board.
       setCamera(fitCameraTo(items))
     }

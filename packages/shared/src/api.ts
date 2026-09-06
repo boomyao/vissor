@@ -1,6 +1,7 @@
 // Wire types for the HTTP/SSE API.
 
 import type { AgentErrorKind, Asset, CanvasItem, ChatMessage, Project, ProjectSnapshot, TurnId } from './types.js'
+import type { GenerationPlan } from './generation.js'
 
 /** Built-in style presets selectable from the command bar. */
 export type StylePreset =
@@ -36,10 +37,6 @@ export interface ChatSendRequest {
   text: string
   /** Asset ids to attach as reference images. */
   attachedAssetIds: string[]
-  /**
-   * Number of variants to request. Server translates this into a
-   * prompt instruction for codex. Omit to accept the server default.
-   */
   variantCount?: number
   /** Optional style preset applied to the prompt. */
   stylePreset?: StylePreset
@@ -59,6 +56,7 @@ export interface ChatSendResponse {
 export type ChatStreamEvent =
   | { kind: 'turn.started'; turnId: TurnId; agentMessageId: string }
   | { kind: 'turn.status'; turnId: TurnId; statusLine: string }
+  | { kind: 'turn.plan'; turnId: TurnId; plan: GenerationPlan }
   | { kind: 'turn.text.delta'; turnId: TurnId; delta: string }
   | { kind: 'turn.text.final'; turnId: TurnId; text: string }
   | { kind: 'turn.completed'; turnId: TurnId }

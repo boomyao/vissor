@@ -5,6 +5,7 @@ import type {
   ReasoningEffort,
   StylePreset,
 } from '@vissor/shared'
+import { DEFAULT_IMAGE_COUNT } from '@vissor/shared'
 import { useStore } from '../store/store.js'
 import { api } from '../lib/api.js'
 import { fitCameraTo } from '../lib/camera.js'
@@ -235,6 +236,14 @@ export function ChatFeed(): JSX.Element | null {
             {m.role === 'agent' && m.error && (
               <FailureNote error={m.error} kind={m.errorKind} />
             )}
+            {m.role === 'agent' && m.generationPlan && (
+              <div style={{ fontSize: 12, color: 'var(--ink-dim)', lineHeight: 1.5 }}>
+                <div>{t('chat.imageProgress', { done: m.producedItemIds.length, total: m.generationPlan.images.length })}</div>
+                {m.generationPlan.images.map((title, index) => (
+                  <div key={index}>{index + 1}. {title}</div>
+                ))}
+              </div>
+            )}
             {m.role === 'agent' && m.status === 'failed' && (
               <RetryButton turnId={m.turnId} />
             )}
@@ -250,6 +259,7 @@ const FAIL_COPY: Record<string, I18nKey> = {
   auth: 'fail.auth',
   upstream: 'fail.upstream',
   'no-output': 'fail.noOutput',
+  'incomplete-output': 'fail.incompleteOutput',
   crashed: 'fail.crashed',
   interrupted: 'fail.interrupted',
   internal: 'fail.internal',
@@ -356,7 +366,7 @@ function RetryButton({ turnId }: { turnId: string }): JSX.Element | null {
     }))
     startPendingSkeletons(
       newTurnId,
-      userMsg.variantCount ?? 2,
+      userMsg.variantCount ?? DEFAULT_IMAGE_COUNT,
       (userMsg.aspectRatio as AspectRatio | undefined) ?? 'square',
     )
     const slots = useStore.getState().pendingSkeletons[newTurnId]

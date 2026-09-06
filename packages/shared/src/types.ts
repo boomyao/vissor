@@ -1,4 +1,4 @@
-// Domain types shared between web and server.
+import type { GenerationPlan } from './generation.js'
 
 export type ProjectId = string
 export type TurnId = string
@@ -110,6 +110,7 @@ export type AgentErrorKind =
   | 'auth'
   | 'upstream'
   | 'no-output'
+  | 'incomplete-output'
   | 'crashed'
   | 'interrupted'
   | 'internal'
@@ -127,6 +128,7 @@ export interface AgentMessage {
   statusLine?: string
   /** Items the agent attached to this turn — canvas ids, not inlined. */
   producedItemIds: ItemId[]
+  generationPlan?: GenerationPlan
   error?: string
   errorKind?: AgentErrorKind
   createdAt: number

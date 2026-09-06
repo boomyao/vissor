@@ -19,6 +19,7 @@ export function Skeletons(): JSX.Element | null {
           y={s.y}
           w={s.w}
           h={s.h}
+          title={s.title ? `${s.variantIndex + 1}. ${s.title}` : undefined}
         />
       ))}
     </>
@@ -30,11 +31,13 @@ function SkeletonTile({
   y,
   w,
   h,
+  title,
 }: {
   x: number
   y: number
   w: number
   h: number
+  title?: string
 }): JSX.Element {
   return (
     <div
@@ -81,7 +84,7 @@ function SkeletonTile({
               display: 'inline-block',
             }}
           />
-          painting
+          {title ?? 'painting'}
         </span>
       </div>
     </div>

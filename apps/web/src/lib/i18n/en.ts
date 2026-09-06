@@ -63,7 +63,7 @@ const en = {
   'hero.titleLine1': 'What do you want',
   'hero.titleLine2': '{em:to make} today?',
   'hero.subtitle':
-    'Describe it below. Each send spawns a cluster of variants on the canvas — drag them, iterate on them, arrange them.',
+    'Describe it below. Generate multiple separate images in one request, then drag them, iterate on them, and arrange them on the canvas.',
   'hero.starter.logo': 'A logo for a third-wave coffee brand',
   'hero.starter.lighthouse': 'Editorial illustration of a lighthouse',
   'hero.starter.running': '4 hero frames for a running app',
@@ -81,7 +81,8 @@ const en = {
   'command.iteratingOne': 'Iterating on 1 tile',
   'command.iteratingMany': 'Iterating on {n} tiles',
   'command.countLabel': 'count',
-  'command.countTitle': 'Variant count — click to cycle',
+  'command.countTitle': 'Separate images per request (1–12). An explicit count or list in your prompt takes priority; Auto defaults to 1.',
+  'command.countAuto': 'Auto',
   'command.reasoningLabel': 'craft',
   'command.reasoningTitle':
     'How much craft Vissor puts into each batch — higher picks the right tools more reliably and makes variants more distinct, at the cost of latency',
@@ -97,6 +98,7 @@ const en = {
   'chat.you': 'You',
   'chat.agent': 'Agent',
   'chat.statusThinking': 'Thinking',
+  'chat.imageProgress': '{done} / {total} images ready',
   'chat.statusFailed': '· failed',
   'command.removeAttachment': 'Remove this reference image',
   'chat.attachedImage': 'Reference image attached to this message',
@@ -106,6 +108,7 @@ const en = {
   'fail.auth': 'Codex is not signed in on the server. Sign in again there, then retry.',
   'fail.upstream': 'The connection to OpenAI dropped. Vissor already retried automatically. These clear up within a few minutes — retry then.',
   'fail.noOutput': 'The model finished without producing an image. Describe the picture more concretely, or word it differently and retry.',
+  'fail.incompleteOutput': 'The image set is incomplete. Finished images remain on the canvas. You can request the missing images in a new message, or retry the full request.',
   'fail.crashed': 'The generator exited unexpectedly. Vissor already retried. If this keeps happening, codex on the server may need updating.',
   'fail.interrupted': 'The server restarted before this finished, so the result was lost. Retry to run it again.',
   'fail.internal': 'Vissor hit an internal error. This is a bug — the server log has the details.',
@@ -199,4 +202,3 @@ const en = {
 
 export type Dict = typeof en
 export { en }
-

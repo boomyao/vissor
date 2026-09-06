@@ -6,6 +6,7 @@ import type {
   UserMessage,
 } from '@vissor/shared'
 import { requireAuth } from '../auth.js'
+import { MAX_IMAGE_COUNT } from '@vissor/shared'
 import { appendUserMessage, cancelTurn, runTurn } from '../codex.js'
 import { getProject, readAssetsIndex } from '../store.js'
 
@@ -25,6 +26,9 @@ export async function chatRoutes(app: FastifyInstance): Promise<void> {
     } = req.body
     if (!projectId || !text) {
       return reply.code(400).send({ error: 'bad_request' })
+    }
+    if (variantCount !== undefined && (!Number.isInteger(variantCount) || variantCount < 1 || variantCount > MAX_IMAGE_COUNT)) {
+      return reply.code(400).send({ error: 'invalid_image_count', max: MAX_IMAGE_COUNT })
     }
     const project = await getProject(projectId)
     if (!project || project.ownerId !== req.authUser!.id) {

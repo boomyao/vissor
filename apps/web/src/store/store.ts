@@ -9,10 +9,9 @@ import type {
   Project,
   ProjectSnapshot,
 } from '@vissor/shared'
-import { ASPECT_DIMS } from '@vissor/shared'
+import { ASPECT_DIMS, DEFAULT_IMAGE_COUNT, MAX_IMAGE_COUNT, imageSlotPosition } from '@vissor/shared'
 import type { SnapGuide } from '../lib/snap.js'
-
-const TURN_GAP = 24
+import { fitCameraTo } from '../lib/camera.js'
 
 /**
  * A client-side placeholder for a variant that codex is still
@@ -27,6 +26,7 @@ export interface SkeletonSlot {
   y: number
   w: number
   h: number
+  title?: string
 }
 
 export interface Camera {
@@ -110,6 +110,30 @@ function withAgentMessage(
   )
 }
 
+function skeletonSlots(
+  items: CanvasItem[],
+  turnId: string,
+  count: number,
+  aspectRatio?: AspectRatio,
+  completed = 0,
+  titles?: string[],
+): SkeletonSlot[] {
+  const n = Number.isInteger(count) ? Math.max(1, Math.min(MAX_IMAGE_COUNT, count)) : DEFAULT_IMAGE_COUNT
+  const dims = ASPECT_DIMS[aspectRatio ?? 'square']
+  const scale = Math.min(1, 512 / Math.max(dims.w, dims.h))
+  return Array.from({ length: Math.max(0, n - completed) }, (_, offset) => {
+    const index = offset + completed
+    return {
+      turnId,
+      variantIndex: index,
+      ...imageSlotPosition(items, turnId, index),
+      w: dims.w * scale,
+      h: dims.h * scale,
+      title: titles?.[index],
+    }
+  })
+}
+
 export const useStore = create<AppState>((set, get) => ({
   project: null,
   projects: [],
@@ -136,7 +160,17 @@ export const useStore = create<AppState>((set, get) => ({
     // in "no active turn" state while the turn keeps running.
     const streamingAgent = [...snap.chat]
       .reverse()
-      .find((m) => m.role === 'agent' && m.status === 'streaming')
+      .find((m): m is AgentMessage => m.role === 'agent' && m.status === 'streaming')
+    const user = snap.chat.find((m) => m.role === 'user' && m.turnId === streamingAgent?.turnId)
+    const plan = streamingAgent?.generationPlan
+    const slots = streamingAgent ? skeletonSlots(
+      snap.items,
+      streamingAgent.turnId,
+      plan?.images.length ?? (user?.role === 'user' ? user.variantCount : undefined) ?? DEFAULT_IMAGE_COUNT,
+      plan?.aspectRatio,
+      streamingAgent.producedItemIds.length,
+      plan?.images,
+    ) : []
     set({
       project: snap.project,
       items: snap.items,
@@ -146,6 +180,7 @@ export const useStore = create<AppState>((set, get) => ({
       attachedAssetIds: [],
       drawerAssetId: null,
       activeTurnId: streamingAgent?.turnId ?? null,
+      pendingSkeletons: streamingAgent && slots.length ? { [streamingAgent.turnId]: slots } : {},
     })
   },
 
@@ -160,6 +195,7 @@ export const useStore = create<AppState>((set, get) => ({
       attachedAssetIds: [],
       drawerAssetId: null,
       activeTurnId: null,
+      pendingSkeletons: {},
     }),
 
   setCamera: (camera) => set({ camera }),
@@ -227,6 +263,17 @@ export const useStore = create<AppState>((set, get) => ({
               statusLine: event.statusLine,
             }),
           }
+        case 'turn.plan': {
+          const agent = s.chat.find((m) => m.role === 'agent' && m.turnId === event.turnId)
+          if (agent?.role === 'agent' && agent.status !== 'streaming') return s
+          const slots = skeletonSlots(s.items, event.turnId, event.plan.images.length, event.plan.aspectRatio,
+            agent?.role === 'agent' ? agent.producedItemIds.length : 0, event.plan.images)
+          return {
+            chat: withAgentMessage(s.chat, event.turnId, { generationPlan: event.plan }),
+            pendingSkeletons: { ...s.pendingSkeletons, [event.turnId]: slots },
+            camera: s.activeTurnId === event.turnId && slots.length ? fitCameraTo(slots) : s.camera,
+          }
+        }
         case 'turn.text.delta':
           return {
             chat: s.chat.map((m) =>
@@ -267,6 +314,7 @@ export const useStore = create<AppState>((set, get) => ({
             assets: { ...s.assets, [event.asset.id]: event.asset },
           }
         case 'item.added': {
+          if (s.items.some((item) => item.id === event.item.id)) return s
           // Consume one skeleton slot for the turn that produced this
           // item, so a tile painting in place replaces its placeholder
           // rather than sitting next to it.
@@ -282,7 +330,12 @@ export const useStore = create<AppState>((set, get) => ({
                     return rest
                   })()
           }
-          return { items: [...s.items, event.item], pendingSkeletons }
+          return {
+            items: [...s.items, event.item], pendingSkeletons,
+            chat: s.chat.map((m) => m.role === 'agent' && m.turnId === turnId && !m.producedItemIds.includes(event.item.id)
+              ? { ...m, producedItemIds: [...m.producedItemIds, event.item.id] }
+              : m),
+          }
         }
         case 'item.updated':
           return {
@@ -308,23 +361,7 @@ export const useStore = create<AppState>((set, get) => ({
 
   startPendingSkeletons: (turnId, count, aspectRatio) =>
     set((s) => {
-      const n = Math.max(1, Math.min(6, Math.floor(count)))
-      const dims = ASPECT_DIMS[aspectRatio ?? 'square']
-      // Match server-side placeNewImageItem: a new row directly below
-      // everything already on the canvas (turns are row-per-turn).
-      const maxY = s.items.reduce((acc, i) => Math.max(acc, i.y + i.h), 0)
-      const rowY = s.items.length ? maxY + TURN_GAP : 0
-      const slots: SkeletonSlot[] = []
-      for (let i = 0; i < n; i++) {
-        slots.push({
-          turnId,
-          variantIndex: i,
-          x: i * (dims.w + TURN_GAP),
-          y: rowY,
-          w: dims.w,
-          h: dims.h,
-        })
-      }
+      const slots = skeletonSlots(s.items, turnId, count, aspectRatio)
       return {
         pendingSkeletons: { ...s.pendingSkeletons, [turnId]: slots },
       }

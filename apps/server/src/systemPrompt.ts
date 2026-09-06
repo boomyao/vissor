@@ -1,24 +1,9 @@
-/**
- * The system prompt that wraps every user message before handing it
- * to codex. codex is a general-purpose coding agent by default; left
- * to its own devices it will try to fulfil "make me a logo" with
- * apply_patch (writing PNG bytes by hand) or by just claiming to have
- * done the work. This prefix forces the design-agent frame and
- * explicitly rules out the common mis-moves.
- *
- * Keep this short — every token costs latency on every turn.
- */
-// Tool selection is the hard part. Codex has two paths to image
-// output: the native `image_gen` tool (writes to
-// ~/.codex/generated_images/<thread>/) and the `imagegen` skill
-// (shell commands writing to cwd). We watch both, but the native
-// tool is ~25% faster and more reliable, so the prompt nudges
-// toward it and deliberately does NOT mention "save to cwd" —
-// the previous version ended that sentence with "…in the current
-// working directory" and that one phrase flipped the model into
-// the shell-skill path every time.
+import { ASPECT_DIMS, DEFAULT_IMAGE_COUNT, MAX_IMAGE_COUNT, type GenerationPlan } from '@vissor/shared'
+
+export const PLAN_PREFIX = 'VISSOR_IMAGE_PLAN '
+
 const BASE_RULES =
-  'Generate the requested image(s) using the built-in `image_gen` tool. Do not invoke the `imagegen` skill, shell commands, or apply_patch. Produce 2 visually distinct variants unless the user specifies a different count — call the tool twice with different prompts or seeds. Do not invent filenames or claim output you did not actually generate. After the tool finishes, reply with one short sentence describing what you produced.'
+  'Generate images using the built-in `image_gen` tool. Do not invoke the `imagegen` skill, shell commands, or apply_patch. First distinguish the attached input references from the requested output images. A numbered list of different deliverables means separate images with separate purposes, not variants of the entire list. Before calling any tools, send an assistant commentary message consisting of VISSOR_IMAGE_PLAN followed by one line of JSON: {"images":["short title for output 1","short title for output 2"],"aspectRatio":"square"}. List every requested output in order, using the user’s language for titles. aspectRatio may be square, portrait, landscape, or wide; omit it if unspecified. This is a machine-readable plan, not text to draw in the images. Then call image_gen exactly once PER planned image, sequentially in plan order, generating one standalone image file per call. Each tool prompt must describe ONLY that output’s purpose plus shared product, reference, language, dimensions and style requirements. Explicitly request one standalone image in each call. Never combine separate deliverables into a collage, contact sheet, tiled grid, or multipanel image. A comparison or detail layout requested within one deliverable is allowed. Keep the product identity and visual style consistent across the set. Use the original attachments in their given order as references for every output; do not accidentally substitute a newly generated image for an original reference. Do not invent product specifications absent from the references. Do not invent filenames or claim output you did not generate. Finish with one short sentence describing the images actually produced.'
 
 const ASPECT_DESCRIPTIONS: Record<string, string> = {
   square: 'Canvas: 1:1 square.',
@@ -51,23 +36,13 @@ export function buildPromptForCodex(opts: {
   const parts: string[] = []
   if (opts.hasAttachments) {
     parts.push(
-      opts.isResume
-        ? 'The attached images are prior iterations; revise them per the request.'
-        : 'The attached images are references; draw style or subject cues from them.',
+      'The attached images are ordered input references. Determine their roles from the user’s request, even when continuing an earlier conversation.',
     )
   }
-  // Variant count: if the client asked for N, we override the default
-  // inside BASE_RULES by prefixing an explicit directive. Keep the
-  // wording tight — codex is sensitive to verbosity.
-  const variantN = normalizeVariantCount(opts.variantCount)
-  const rules =
-    variantN !== 2
-      ? BASE_RULES.replace(
-          'Produce 2 visually distinct variants unless the user specifies a different count',
-          `Produce exactly ${variantN} visually distinct variant${variantN === 1 ? '' : 's'}`,
-        )
-      : BASE_RULES
-  parts.push(rules)
+  parts.push(BASE_RULES)
+  parts.push(
+    `The user’s explicit output count or list takes precedence over the UI count. If neither is specified, produce ${opts.variantCount ?? DEFAULT_IMAGE_COUNT} image(s); only use visual variants when no distinct purposes are requested. Plan at most ${MAX_IMAGE_COUNT} outputs per turn. If the user requests more, clearly state the limit and which remaining outputs are deferred.`,
+  )
   if (opts.stylePreset && STYLE_DESCRIPTIONS[opts.stylePreset]) {
     parts.push(STYLE_DESCRIPTIONS[opts.stylePreset])
   }
@@ -78,10 +53,15 @@ export function buildPromptForCodex(opts: {
   return parts.join('\n\n')
 }
 
-function normalizeVariantCount(n: number | undefined): number {
-  if (!n) return 2
-  const i = Math.floor(n)
-  if (i <= 0) return 1
-  if (i > 6) return 6 // hard cap — codex gets slow and wasteful beyond this
-  return i
+export function parseGenerationPlan(text: string): GenerationPlan | null {
+  if (!text.startsWith(PLAN_PREFIX)) return null
+  try {
+    const value = JSON.parse(text.slice(PLAN_PREFIX.length))
+    if (!Array.isArray(value?.images) || value.images.length < 1 || value.images.length > MAX_IMAGE_COUNT) return null
+    if (!value.images.every((title: unknown) => typeof title === 'string' && title.trim().length > 0 && title.length <= 200)) return null
+    if (value.aspectRatio !== undefined && !Object.hasOwn(ASPECT_DIMS, value.aspectRatio)) return null
+    return { images: value.images.map((title: string) => title.trim()), aspectRatio: value.aspectRatio }
+  } catch {
+    return null
+  }
 }

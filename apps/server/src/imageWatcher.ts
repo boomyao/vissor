@@ -1,6 +1,6 @@
 import { readdir, stat } from 'node:fs/promises'
 import { homedir } from 'node:os'
-import { join } from 'node:path'
+import { extname, join } from 'node:path'
 
 /**
  * Per-project singleton watcher for codex's generated_images folder.
@@ -30,6 +30,8 @@ interface ProjectWatcher {
   pending: Map<string, number>
   handler: Handler | null
   stopped: boolean
+  timer?: ReturnType<typeof setTimeout>
+  running?: Promise<void>
 }
 
 const POLL_MS = 300
@@ -49,9 +51,8 @@ async function seedExistingImages(threadId: string): Promise<Set<string>> {
   }
 }
 
-async function tick(projectId: string): Promise<void> {
-  const w = watchers.get(projectId)
-  if (!w || w.stopped) return
+async function scan(projectId: string, w: ProjectWatcher): Promise<void> {
+  if (w.stopped) return
   const dir = generatedImagesDir(w.threadId)
   let entries: string[] = []
   try {
@@ -59,12 +60,22 @@ async function tick(projectId: string): Promise<void> {
   } catch {
     // Dir may not exist yet — codex creates it lazily.
   }
-  for (const name of entries) {
+  const candidates = await Promise.all(entries.map(async (name) => {
+    if (w.seen.has(name) || !['.png', '.jpg', '.jpeg', '.webp'].includes(extname(name).toLowerCase())) return null
+    try {
+      const info = await stat(join(dir, name))
+      return info.isFile() ? { name, info } : null
+    } catch {
+      return null
+    }
+  }))
+  const ordered = candidates.filter((entry): entry is NonNullable<typeof entry> => entry !== null)
+    .sort((a, b) => a.info.mtimeMs - b.info.mtimeMs || a.name.localeCompare(b.name))
+  for (const { name, info: s } of ordered) {
+    if (w.stopped) return
     if (w.seen.has(name)) continue
     const abs = join(dir, name)
     try {
-      const s = await stat(abs)
-      if (!s.isFile()) continue
       // Wait for the file size to stabilise before ingesting, else we
       // risk reading a half-written PNG.
       const prev = w.pending.get(name)
@@ -88,9 +99,25 @@ async function tick(projectId: string): Promise<void> {
       // Racing a rename; ignore and try again next tick.
     }
   }
-  if (!w.stopped) {
-    setTimeout(() => void tick(projectId), POLL_MS)
-  }
+}
+
+function tick(projectId: string, w: ProjectWatcher): void {
+  if (w.stopped) return
+  w.running = scan(projectId, w).finally(() => {
+    if (!w.stopped) w.timer = setTimeout(() => tick(projectId, w), POLL_MS)
+  })
+}
+
+export async function flushWatcher(projectId: string): Promise<void> {
+  const w = watchers.get(projectId)
+  if (!w || w.stopped) return
+  clearTimeout(w.timer)
+  await w.running
+  clearTimeout(w.timer)
+  await scan(projectId, w)
+  await new Promise((resolve) => setTimeout(resolve, POLL_MS))
+  await scan(projectId, w)
+  if (!w.stopped) w.timer = setTimeout(() => tick(projectId, w), POLL_MS)
 }
 
 /**
@@ -102,14 +129,18 @@ async function tick(projectId: string): Promise<void> {
 export async function ensureWatcher(
   projectId: string,
   threadId: string,
+  includeExisting = false,
 ): Promise<void> {
   const existing = watchers.get(projectId)
   if (existing && existing.threadId === threadId && !existing.stopped) {
     return
   }
-  if (existing) existing.stopped = true
+  if (existing) {
+    existing.stopped = true
+    clearTimeout(existing.timer)
+  }
 
-  const seen = await seedExistingImages(threadId)
+  const seen = includeExisting ? new Set<string>() : await seedExistingImages(threadId)
   const w: ProjectWatcher = {
     threadId,
     seen,
@@ -118,7 +149,7 @@ export async function ensureWatcher(
     stopped: false,
   }
   watchers.set(projectId, w)
-  void tick(projectId)
+  tick(projectId, w)
 }
 
 export function setHandler(projectId: string, handler: Handler | null): void {
