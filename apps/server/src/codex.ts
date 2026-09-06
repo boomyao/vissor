@@ -705,30 +705,27 @@ async function runOneAttempt(p: OneAttemptParams): Promise<AttemptResult> {
       const item = (ev as { item: CodexItem }).item
       if (item.type === 'agent_message') {
         const raw = (item as { text?: string }).text ?? ''
-        const visibleLines: string[] = []
-        for (const line of raw.split('\n')) {
-          if (!line.trim().startsWith(PLAN_PREFIX)) {
-            visibleLines.push(line)
-            continue
-          }
-          const parsed = parseGenerationPlan(line.trim())
+        let t = raw.trim()
+        if (raw.includes(PLAN_PREFIX)) {
+          const parsed = parseGenerationPlan(raw)
           if (!parsed) throw new Error('Invalid generation plan. Please retry.')
-          if (plan || variantCount > 0) continue
-          plan = parsed
-          requestedCount = parsed.images.length
-          const chat = await readChat(projectId)
-          await rewriteChat(projectId, chat.map((m) =>
-            m.role === 'agent' && m.id === agentMessageId
-              ? { ...m, generationPlan: parsed }
-              : m,
-          ))
-          projectBus.publish(projectId, { kind: 'turn.plan', turnId, plan: parsed })
-          projectBus.publish(projectId, {
-            kind: 'turn.status', turnId,
-            statusLine: `Generating 1 of ${requestedCount}…`,
-          })
+          t = parsed.text
+          if (!plan && variantCount === 0) {
+            plan = parsed.plan
+            requestedCount = plan.images.length
+            const chat = await readChat(projectId)
+            await rewriteChat(projectId, chat.map((m) =>
+              m.role === 'agent' && m.id === agentMessageId
+                ? { ...m, generationPlan: parsed.plan }
+                : m,
+            ))
+            projectBus.publish(projectId, { kind: 'turn.plan', turnId, plan })
+            projectBus.publish(projectId, {
+              kind: 'turn.status', turnId,
+              statusLine: `Generating 1 of ${requestedCount}…`,
+            })
+          }
         }
-        const t = visibleLines.join('\n').trim()
         if (t) {
           const delta = textChunks.length ? '\n\n' + t : t
           textChunks.push(t)

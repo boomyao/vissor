@@ -1,6 +1,6 @@
 import { ASPECT_DIMS, DEFAULT_IMAGE_COUNT, MAX_IMAGE_COUNT, type GenerationPlan } from '@vissor/shared'
 
-export const PLAN_PREFIX = 'VISSOR_IMAGE_PLAN '
+export const PLAN_PREFIX = 'VISSOR_IMAGE_PLAN'
 
 const BASE_RULES =
   'Generate images using the built-in `image_gen` tool. Do not invoke the `imagegen` skill, shell commands, or apply_patch. First distinguish the attached input references from the requested output images. A numbered list of different deliverables means separate images with separate purposes, not variants of the entire list. Before calling any tools, send an assistant commentary message consisting of VISSOR_IMAGE_PLAN followed by one line of JSON: {"images":["short title for output 1","short title for output 2"],"aspectRatio":"square"}. List every requested output in order, using the user’s language for titles. aspectRatio may be square, portrait, landscape, or wide; omit it if unspecified. This is a machine-readable plan, not text to draw in the images. Then call image_gen exactly once PER planned image, sequentially in plan order, generating one standalone image file per call. Each tool prompt must describe ONLY that output’s purpose plus shared product, reference, language, dimensions and style requirements. Explicitly request one standalone image in each call. Never combine separate deliverables into a collage, contact sheet, tiled grid, or multipanel image. A comparison or detail layout requested within one deliverable is allowed. Keep the product identity and visual style consistent across the set. Use the original attachments in their given order as references for every output; do not accidentally substitute a newly generated image for an original reference. Do not invent product specifications absent from the references. Do not invent filenames or claim output you did not generate. Finish with one short sentence describing the images actually produced.'
@@ -53,14 +53,45 @@ export function buildPromptForCodex(opts: {
   return parts.join('\n\n')
 }
 
-export function parseGenerationPlan(text: string): GenerationPlan | null {
-  if (!text.startsWith(PLAN_PREFIX)) return null
+export function parseGenerationPlan(text: string): {
+  plan: GenerationPlan
+  text: string
+} | null {
+  const marker = /^\s*VISSOR_IMAGE_PLAN\b[ \t]*[:：]?[ \t]*/m.exec(text)
+  if (!marker) return null
+  const afterMarker = marker.index + marker[0].length
+  const opening = /^\s*(?:```(?:json)?\s*)?\{/.exec(text.slice(afterMarker))
+  if (!opening) return null
+  const start = afterMarker + opening[0].length - 1
+  let depth = 0
+  let quoted = false
+  let escaped = false
+  let end = -1
+  for (let i = start; i < text.length; i++) {
+    const character = text[i]
+    if (quoted) {
+      if (escaped) escaped = false
+      else if (character === '\\') escaped = true
+      else if (character === '"') quoted = false
+    } else if (character === '"') quoted = true
+    else if (character === '{') depth++
+    else if (character === '}' && --depth === 0) {
+      end = i + 1
+      break
+    }
+  }
+  if (end === -1) return null
   try {
-    const value = JSON.parse(text.slice(PLAN_PREFIX.length))
+    const value = JSON.parse(text.slice(start, end))
     if (!Array.isArray(value?.images) || value.images.length < 1 || value.images.length > MAX_IMAGE_COUNT) return null
     if (!value.images.every((title: unknown) => typeof title === 'string' && title.trim().length > 0 && title.length <= 200)) return null
     if (value.aspectRatio !== undefined && !Object.hasOwn(ASPECT_DIMS, value.aspectRatio)) return null
-    return { images: value.images.map((title: string) => title.trim()), aspectRatio: value.aspectRatio }
+    const before = text.slice(0, marker.index).replace(/```(?:json)?\s*$/, '').trim()
+    const after = text.slice(end).replace(/^\s*```/, '').trim()
+    return {
+      plan: { images: value.images.map((title: string) => title.trim()), aspectRatio: value.aspectRatio },
+      text: [before, after].filter(Boolean).join('\n\n'),
+    }
   } catch {
     return null
   }
