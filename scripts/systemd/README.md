@@ -2,18 +2,17 @@
 
 Copies of what runs on boomyao-iron, kept here so the deployment can be
 rebuilt without logging in to read it back. They are **not** applied
-automatically. Vissor uses a dedicated Codex CLI 0.153.4 runtime for
-`gpt-6-astra`; the previous CLI 0.146.0 cannot run this model. Provision
-the runtime on boomyao-iron before installing the units:
+automatically. Vissor uses a dedicated Codex CLI 0.156.1 runtime for
+`gpt-6-sol`. Provision the runtime on boomyao-iron before installing the units:
 
 ```bash
-mkdir -p /home/boomyao/.local/share/vissor/codex-0.153.4
-cd /home/boomyao/.local/share/vissor/codex-0.153.4
-/home/boomyao/.bun/bin/bun add --exact @openai/codex@0.153.4
+mkdir -p /home/boomyao/.local/share/vissor/codex-0.156.1
+cd /home/boomyao/.local/share/vissor/codex-0.156.1
+/home/boomyao/.bun/bin/bun add --exact @openai/codex@0.156.1
 cat > run-codex <<'EOF'
 #!/usr/bin/env bash
 set -euo pipefail
-exec /home/boomyao/.bun/bin/bun /home/boomyao/.local/share/vissor/codex-0.153.4/node_modules/@openai/codex/bin/codex.js "$@"
+exec /home/boomyao/.bun/bin/bun /home/boomyao/.local/share/vissor/codex-0.156.1/node_modules/@openai/codex/bin/codex.js "$@"
 EOF
 chmod +x run-codex
 ./run-codex --version

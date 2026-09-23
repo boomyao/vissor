@@ -71,7 +71,7 @@ function validReasoningEffort(v: string | undefined): string | null {
     : null
 }
 
-const CODEX_MODEL = process.env.VISSOR_CODEX_MODEL ?? 'gpt-6-astra'
+const CODEX_MODEL = process.env.VISSOR_CODEX_MODEL ?? 'gpt-6-sol'
 const CODEX_SERVICE_TIER = process.env.VISSOR_CODEX_SERVICE_TIER ?? 'fast'
 
 /** Cap the longest tile side so canvas stays readable regardless of
